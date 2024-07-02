@@ -3,6 +3,8 @@ from client_dialogs import *
 con = sqlite3.connect('data/db.db')
 cur = con.cursor()
 timer_con = time.time()
+last_inlines = {}
+to_del_message = {}
 
 
 def create_con():
@@ -32,8 +34,8 @@ def create_user(message, mod=False):
         result = False
 
     if not result:
-        inquiry = f"""INSERT INTO accounts (tg_id, name, phone_number, tg_menu, number_requests)
-VALUES ({message.chat_id}, '{message.from_user.full_name}', '{message.from_user.link}', 1, 0)"""
+        inquiry = f"""INSERT INTO accounts (tg_id, name, phone_number, tg_menu, number_requests, tg_link)
+VALUES ({message.chat_id}, '{message.from_user.full_name}', '{message.from_user.link}', 1, 0, '{message.from_user.link}')"""
         cur.execute(inquiry)
         con.commit()
         print(f'добавлен новый пользователь, id = {message.chat_id}, name = {message.from_user.full_name}')
@@ -62,40 +64,51 @@ async def start(update: Update, context: CallbackContext) -> None:
         change_tg_menu(person_date[1], 5, con, cur)
     else:
         change_tg_menu(person_date[1], 2, con, cur)
+        await menu_2_main_menu(update, context, con, cur, person_date)
 
 
 # Обработчик нажатия кнопок
 async def button_handler(update: Update, context: CallbackContext) -> None:
+    check_timer_con()
+    person_date = get_data_of_person(update.callback_query.message)
+
     query = update.callback_query
     await query.answer()
 
-    if query.data == 'button1':
-        # Текст сообщения
-        text = "Вы нажали Кнопку 1! Пожалуйста, выберите следующую опцию:"
+    if query.data == 'cancel':
+        change_tg_menu(person_date[1], 2, con, cur)
+        await menu_2_main_menu(update.callback_query, context, con, cur, person_date)
+        await query.edit_message_text(text='Действие отменено')
 
-        # Определяем кнопки для нового сообщения
+    if query.data == 'user_name':
+        text = "Как вас подписать в расписании, чтоб было понятно кто вы?"
+
         keyboard = [
-            [InlineKeyboardButton("Подкнопка 1.1 (неактивная)", callback_data='subbutton1.1_disabled')],
-            [InlineKeyboardButton("Подкнопка 1.2", callback_data='subbutton1.2')],
-            [InlineKeyboardButton("Назад", callback_data='back')]
+            [InlineKeyboardButton("Назад", callback_data='back_to_7')]
         ]
-
-        # Создаем клавиатуру
         reply_markup = InlineKeyboardMarkup(keyboard)
-
-        # Обновляем сообщение с новой клавиатурой
+        change_tg_menu(person_date[1], 3, con, cur)
         await query.edit_message_text(text=text, reply_markup=reply_markup)
 
-    elif query.data == 'subbutton1.1_disabled':
-        # Игнорируем нажатие на неактивную кнопку
-        await query.answer("Эта кнопка неактивна", show_alert=True)
+    if query.data == 'phone_number':
+        text = "Укажите ваш номер телефона, чтобы мы могли перезвонить для уточнения записи"
+        keyboard = [
+            [InlineKeyboardButton("Назад", callback_data='back_to_7')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        change_tg_menu(person_date[1], 4, con, cur)
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
 
-    elif query.data == 'subbutton1.1':
-        await query.edit_message_text(text="Вы выбрали Подкнопку 1.1")
-    elif query.data == 'subbutton1.2':
-        await query.edit_message_text(text="Вы выбрали Подкнопку 1.2")
-    elif query.data == 'back':
-        await start(update, context)
+        keyboard = [[KeyboardButton("Отправить номер телефона", request_contact=True)]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        message = await query.message.reply_text('📞', reply_markup=reply_markup)
+        to_del_message[person_date[1]] = message.message_id
+
+    if query.data == 'back_to_7' and (person_date[4] == 3 or person_date[4] == 4):
+        await delete_message(update, context, person_date, to_del_message)
+
+        change_tg_menu(person_date[1], 2, con, cur)
+        await menu_7(update, context, con, cur, person_date, 0)
 
 
 # Обработчик получения контакта
@@ -105,17 +118,8 @@ async def contact_handler(update: Update, context: CallbackContext) -> None:
 
     if person_date[4] == 6:
         await menu_6_get_phone_number(update, context, con, cur, person_date)
-    else:
-        # TODO удалить этот блок
-        contact = update.message.contact
-        user = update.message.from_user
-
-        # Получение информации о пользователе
-        user_name = user.full_name
-        phone_number = contact.phone_number
-
-        # Отправка информации пользователю
-        await update.message.reply_text(f"Спасибо, {user_name}! Ваш номер телефона: {phone_number}")
+    elif person_date[4] == 4:
+        await menu_4_get_phone_number(update, context, con, cur, person_date, last_inlines=last_inlines, to_del_message=to_del_message)
 
 
 # Обработчик текстовых сообщений
@@ -127,27 +131,15 @@ async def text_message_handler(update: Update, context: CallbackContext) -> None
         await menu_5_get_name(update, context, con, cur, person_date)
     elif person_date[4] == 6:
         await menu_6_get_phone_number(update, context, con, cur, person_date)
-    else:
-        # TODO удалить этот блок
-        text = update.message.text
-
-        if text == 'Кнопка 1':
-            text = "Вы нажали Кнопку 1! Пожалуйста, выберите следующую опцию:"
-
-            # Определяем кнопки для нового сообщения
-            keyboard = []
-            for i in range(1, 21):
-                keyboard.append([InlineKeyboardButton(f"Подкнопка 1.{i}", callback_data=f'subbutton1.{i}')])
-
-            # Создаем клавиатуру
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            # Обновляем сообщение с новой клавиатурой
-            await update.message.reply_text(text, reply_markup=reply_markup)
-            return
-
-        await update.message.reply_text(f"Вы отправили сообщение: {text}")
-
+    elif person_date[4] == 2:
+        if update.message.text == 'Обновить контактную информацию':
+            await menu_7(update, context, con, cur, person_date, last_inlines=last_inlines)
+        elif update.message.text == 'Общее расписание':
+            await menu_8_general_timetable(update, context, con, cur, person_date)
+        else:
+            await menu_2_main_menu(update, context, con, cur, person_date)
+    elif person_date[4] == 3:
+        await menu_3_get_name(update, context, con, cur, person_date, last_inlines=last_inlines)
 
 def main():
     # Создание подключения к базе данных
