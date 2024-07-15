@@ -1,8 +1,9 @@
-from auth import token
+from auth import token, admins
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 import time
 import sqlite3
+from support_functions import delete_message
 
 
 def change_tg_menu(tg_id, new_type, con, cur):
@@ -11,14 +12,6 @@ def change_tg_menu(tg_id, new_type, con, cur):
         WHERE tg_id = '{tg_id}'"""
     cur.execute(inquiry)
     con.commit()
-
-
-async def delete_message(update, context, person_date, to_del_message):
-    if to_del_message is not None and person_date[1] in to_del_message:
-        await context.bot.delete_message(
-            chat_id=update.effective_chat.id,
-            message_id=to_del_message[person_date[1]]
-        )
 
 
 async def menu_1_welcome(update: Update, context: CallbackContext, con, cur, person_date):
@@ -183,7 +176,9 @@ async def menu_4_get_phone_number(update: Update, context: CallbackContext, con,
             chat_id=update.effective_chat.id,
             message_id=last_inlines[person_date[1]] + 1
         )
-    await delete_message(update, context, person_date, to_del_message)
+    if to_del_message is not None and person_date[1] in to_del_message:
+        await delete_message(update, context, to_del_message[person_date[1]])
+
 
     change_tg_menu(person_date[1], 2, con, cur)
     await menu_2_main_menu(update, context, con, cur, person_date)

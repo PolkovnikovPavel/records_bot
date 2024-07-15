@@ -1,10 +1,16 @@
 from client_dialogs import *
+from admin_dialogs import admin_button_handler, admin_text_message_handler, admin_contact_handler, check_is_admin, menu_100_welcome
 
 con = sqlite3.connect('data/db.db')
 cur = con.cursor()
 timer_con = time.time()
 last_inlines = {}
 to_del_message = {}
+
+is_admin_menu = {}
+for id in admins:
+    is_admin_menu[id] = True
+
 
 
 def create_con():
@@ -58,6 +64,10 @@ def get_data_of_person(message):
 async def start(update: Update, context: CallbackContext) -> None:
     check_timer_con()
     person_date = get_data_of_person(update.message)
+    if check_is_admin(person_date):
+        if is_admin_menu[person_date[1]]:
+            await menu_100_welcome(update, context, con, cur, person_date)
+            return
 
     if person_date[4] == 1:
         await menu_1_welcome(update, context, con, cur, person_date)
@@ -71,6 +81,10 @@ async def start(update: Update, context: CallbackContext) -> None:
 async def button_handler(update: Update, context: CallbackContext) -> None:
     check_timer_con()
     person_date = get_data_of_person(update.callback_query.message)
+    if check_is_admin(person_date):
+        if is_admin_menu[person_date[1]]:
+            await admin_button_handler(update, context, con, cur, person_date)
+            return
 
     query = update.callback_query
     await query.answer()
@@ -115,6 +129,10 @@ async def button_handler(update: Update, context: CallbackContext) -> None:
 async def contact_handler(update: Update, context: CallbackContext) -> None:
     check_timer_con()
     person_date = get_data_of_person(update.message)
+    if check_is_admin(person_date):
+        if is_admin_menu[person_date[1]]:
+            await admin_contact_handler(update, context, con, cur, person_date)
+            return
 
     if person_date[4] == 6:
         await menu_6_get_phone_number(update, context, con, cur, person_date)
@@ -126,6 +144,10 @@ async def contact_handler(update: Update, context: CallbackContext) -> None:
 async def text_message_handler(update: Update, context: CallbackContext) -> None:
     check_timer_con()
     person_date = get_data_of_person(update.message)
+    if check_is_admin(person_date):
+        if is_admin_menu[person_date[1]]:
+            await admin_text_message_handler(update, context, con, cur, person_date)
+            return
 
     if person_date[4] == 5:
         await menu_5_get_name(update, context, con, cur, person_date)
