@@ -12,6 +12,8 @@ admin_calendar_data = {}
 last_admin_inlines = {}
 count_deleted_msgs = {}
 selected_template = {}
+selected_account = {}
+is_active_account = {}
 
 
 def change_tg_menu(tg_id, new_type, con, cur):
@@ -35,7 +37,8 @@ async def change_account_type(is_admin_menu, person_date, value=True):
 async def menu_100_welcome(update: Update, context: CallbackContext, con, cur, person_date):
     # Текст сообщения
     text = """Добро пожаловать! Это закулисье автоматической системы - тут можно управлять почти всем\n
-В любой непонятной ситуации введите команду /start"""
+В любой непонятной ситуации введите команду /start
+Для переключения управления как клиент и обратно в админа команда /switch"""
     keyboard = [['Далее']]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text(text, reply_markup=reply_markup)
@@ -302,7 +305,7 @@ async def menu_111_take(update: Update, context: CallbackContext, con, cur, pers
             times = '()'
 
         keyboard.append([InlineKeyboardButton(f'{template[1]} {times}', callback_data=f'template_{template[0]}')])
-    keyboard.append([InlineKeyboardButton('Закрыть', callback_data='close')])
+    keyboard.append([InlineKeyboardButton('❌ Закрыть', callback_data='close')])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     if message_id is not None:
@@ -379,7 +382,7 @@ async def menu_113_take(update: Update, context: CallbackContext, con, cur, pers
     times = support_functions.get_template_from_json(template[2])
     times.sort(key=lambda x: support_functions.get_count_minutes(x))
     for time in times:
-        keyboard.append([InlineKeyboardButton(time, callback_data=time)])
+        keyboard.append([InlineKeyboardButton('🗑️' + time, callback_data=time)])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     if message_id:
@@ -491,6 +494,239 @@ async def menu_115_get(update: Update, context: CallbackContext, con, cur, perso
     change_tg_menu(person_date[1], 113, con, cur)
 
 
+# ====================================================================================================== Пациенты
+
+
+async def menu_121_take(update: Update, context: CallbackContext, con, cur, person_date, message_id=None, is_active=False):
+    if is_active:
+        text = 'Активные пациенты:'
+    else:
+        text = 'Все пациенты:'
+    is_active_account[person_date[1]] = is_active
+
+    keyboard = [[InlineKeyboardButton("❌ Закрыть", callback_data='close')]]
+    if is_active:
+        active_id = support_functions.get_active_accounts(cur)
+        inquiry = []
+        for id in active_id:
+            inquiry.append(f'id = {id}')
+        inquiry = 'SELECT * FROM accounts WHERE is_deleted = 0 AND (' + ' OR '.join(inquiry) + ')'
+        cur.execute(inquiry)
+    else:
+        cur.execute(f'''SELECT * FROM accounts WHERE is_deleted = 0''')
+    result = cur.fetchall()
+    if is_active:
+        result.sort(key=lambda x: x[2])
+    else:
+        result = result[::-1]
+
+    for account in result:
+        name = str(account[2])
+        if str(account[3]).isdigit():
+            name += f' ({account[3]})'
+        if account[7]:
+            name = '✔ ' + name
+        keyboard.append([InlineKeyboardButton(name, callback_data=f'account_{account[0]}')])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if message_id is not None:
+        await context.bot.edit_message_text(text=text,
+            chat_id=person_date[1],
+            reply_markup=reply_markup,
+            message_id=message_id)
+    else:
+        await update.message.reply_text(text=text, reply_markup=reply_markup)
+
+
+async def menu_121_get(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+    await query.answer()
+    last_admin_inlines[person_date[1]] = query.message.message_id
+
+    if query.data == 'close':
+        await context.bot.edit_message_text(text=query.message.text,
+            chat_id=person_date[1],
+            message_id=query.message.message_id)
+
+        await menu_101_main_menu(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 101, con, cur)
+    else:
+        account_id = int(query.data.split('_')[1])
+        selected_account[person_date[1]] = account_id
+        await menu_122_take(update, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 122, con, cur)
+
+
+async def menu_122_take(update: Update, context: CallbackContext, con, cur, person_date):
+    if person_date[1] not in selected_account:
+        return
+
+    cur.execute(f'''SELECT * FROM accounts
+        WHERE id = {selected_account[person_date[1]]}''')
+    account = cur.fetchall()[0]
+
+    cur.execute(f'''SELECT id FROM records
+            WHERE patient_id = {selected_account[person_date[1]]}''')
+    result = cur.fetchall()
+
+    text = f'''{account[2]}\n
+📞 {account[3]}
+всего записей: {len(result)}
+====================
+📓 {account[9]}
+'''
+    verify = ["✔ подтвердить аккаунт", 'verify']
+    if account[7]:
+        verify = ['✔ Доверенный аккаунт', 'null']
+
+
+    keyboard = [[],
+                [InlineKeyboardButton("📓 Добавить описание", callback_data='add_description'),
+                 InlineKeyboardButton("📓 Заменить описание", callback_data='set_description')],
+                [InlineKeyboardButton("📅 Расписание", callback_data='timetable'),
+                 InlineKeyboardButton("Изменить имя", callback_data='new_name')],
+                [InlineKeyboardButton(verify[0], callback_data=verify[1]),
+                 InlineKeyboardButton("🚫 забанить", callback_data='ban')],
+                [InlineKeyboardButton("Назад", callback_data='back')]
+                ]
+    if account[6] == 'None':
+        keyboard[0].append(InlineKeyboardButton('Нет ссылки', callback_data='none'))
+    else:
+        keyboard[0].append(InlineKeyboardButton('Написать', url=account[6]))
+
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.edit_message_text(text=text,
+                                        chat_id=person_date[1],
+                                        reply_markup=reply_markup,
+                                        message_id=last_admin_inlines[person_date[1]])
+
+
+async def menu_122_get(update: Update, context: CallbackContext, con, cur, person_date, is_inline=True):
+    if person_date[1] not in selected_account:
+        return
+
+    cur.execute(f'''SELECT * FROM accounts
+    WHERE id = {selected_account[person_date[1]]}''')
+    account = cur.fetchall()[0]
+
+    if is_inline:
+        query = update.callback_query
+        await query.answer()
+
+        if query.data == 'back':
+            del selected_account[person_date[1]]
+            await menu_121_take(update, context, con, cur, person_date, query.message.message_id, is_active=is_active_account[person_date[1]])
+            change_tg_menu(person_date[1], 121, con, cur)
+        elif query.data == 'add_description':
+            text = f'Дополнение описания с новой строки:'
+            keyboard = [[InlineKeyboardButton("Назад", callback_data='back')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await context.bot.edit_message_text(text=text,
+                                                chat_id=person_date[1],
+                                                reply_markup=reply_markup,
+                                                message_id=query.message.message_id)
+            change_tg_menu(person_date[1], 123, con, cur)
+        elif query.data == 'set_description':
+            text = f'Новое описание с ЧИСТОГО листа:'
+            keyboard = [[InlineKeyboardButton("Назад", callback_data='back')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await context.bot.edit_message_text(text=text,
+                                                chat_id=person_date[1],
+                                                reply_markup=reply_markup,
+                                                message_id=query.message.message_id)
+            change_tg_menu(person_date[1], 124, con, cur)
+        elif query.data == 'new_name':
+            text = f'Введите новое имя для этого пользователя:'
+            keyboard = [[InlineKeyboardButton("Назад", callback_data='back')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await context.bot.edit_message_text(text=text,
+                                                chat_id=person_date[1],
+                                                reply_markup=reply_markup,
+                                                message_id=query.message.message_id)
+            change_tg_menu(person_date[1], 125, con, cur)
+        elif query.data == 'timetable':
+            timetable = list(map(lambda x: f'* {x[1].strftime("%d.%m.%Y")} в {x[0]}', support_functions.get_timetable_by_user(cur, account[0])))
+            text = 'Расписание ближайших процедур:\n' + '\n'.join(timetable)
+            await query.message.reply_text(text)
+        elif query.data == 'ban':
+            text = f'!Для БЕЗВОЗРАТНОГО удаления и БЛОКИРОВКИ аккаунта "{account[2]} (tg_id = {account[1]})" \nОтправьте сообщение "УдАлИтЬ {account[0]}"'
+            await query.message.reply_text(text)
+        elif query.data == 'verify':
+            inquiry = f"""UPDATE accounts 
+            SET is_verification = 1 WHERE id = {selected_account[person_date[1]]}"""
+            cur.execute(inquiry)
+            con.commit()
+            await menu_122_take(update, context, con, cur, person_date)
+    else:
+        if update.message.text == f'УдАлИтЬ {account[0]}':
+            inquiry = f"""UPDATE accounts 
+            SET is_deleted = 1 WHERE id = {selected_account[person_date[1]]}"""
+            cur.execute(inquiry)
+            con.commit()
+
+
+async def menu_123_get(update: Update, context: CallbackContext, con, cur, person_date, is_inline=False):
+    if not is_inline:
+        if person_date[1] not in selected_account:
+            return
+        cur.execute(f'''SELECT * FROM accounts
+            WHERE id = {selected_account[person_date[1]]}''')
+        account = cur.fetchall()[0]
+
+        new_description = account[9] + '\n' + update.message.text
+        inquiry = f"""UPDATE accounts 
+        SET description = '{new_description}' WHERE id = {selected_account[person_date[1]]}"""
+        cur.execute(inquiry)
+        con.commit()
+    if is_inline:
+        query = update.callback_query
+        await query.answer()
+        await menu_122_take(query, context, con, cur, person_date)
+    else:
+        await menu_122_take(update, context, con, cur, person_date)
+    change_tg_menu(person_date[1], 122, con, cur)
+
+
+async def menu_124_get(update: Update, context: CallbackContext, con, cur, person_date, is_inline=False):
+    if not is_inline:
+        if person_date[1] not in selected_account:
+            return
+
+        new_description = update.message.text
+        inquiry = f"""UPDATE accounts 
+        SET description = '{new_description}' WHERE id = {selected_account[person_date[1]]}"""
+        cur.execute(inquiry)
+        con.commit()
+    if is_inline:
+        query = update.callback_query
+        await query.answer()
+        await menu_122_take(query, context, con, cur, person_date)
+    else:
+        await menu_122_take(update, context, con, cur, person_date)
+    change_tg_menu(person_date[1], 122, con, cur)
+
+
+async def menu_125_get(update: Update, context: CallbackContext, con, cur, person_date, is_inline=False):
+    if not is_inline:
+        if person_date[1] not in selected_account:
+            return
+
+        new_name = update.message.text
+        inquiry = f"""UPDATE accounts 
+        SET name = '{new_name}' WHERE id = {selected_account[person_date[1]]}"""
+        cur.execute(inquiry)
+        con.commit()
+    if is_inline:
+        query = update.callback_query
+        await query.answer()
+        await menu_122_take(query, context, con, cur, person_date)
+    else:
+        await menu_122_take(update, context, con, cur, person_date)
+    change_tg_menu(person_date[1], 122, con, cur)
+
+
+
 
 # ====================================================================================================== Главное меню
 
@@ -524,6 +760,16 @@ async def admin_button_handler(update: Update, context: CallbackContext, con, cu
         await menu_114_get(update, context, con, cur, person_date, True)
     elif person_date[4] == 115:
         await menu_115_get(update, context, con, cur, person_date, True)
+    elif person_date[4] == 121:
+        await menu_121_get(update, context, con, cur, person_date)
+    elif person_date[4] == 122:
+        await menu_122_get(update, context, con, cur, person_date, True)
+    elif person_date[4] == 123:
+        await menu_123_get(update, context, con, cur, person_date, True)
+    elif person_date[4] == 124:
+        await menu_124_get(update, context, con, cur, person_date, True)
+    elif person_date[4] == 125:
+        await menu_125_get(update, context, con, cur, person_date, True)
 
 
 async def admin_text_message_handler(update: Update, context: CallbackContext, con, cur, person_date):
@@ -540,9 +786,12 @@ async def admin_text_message_handler(update: Update, context: CallbackContext, c
         elif update.message.text == 'База данных':
             await update.message.reply_text('В разработке')
             await menu_101_main_menu(update, context, con, cur, person_date)
-        elif 'пациенты' in update.message.text.lower():
-            await update.message.reply_text('Собираем статистику, пока мало данных...')
-            await menu_101_main_menu(update, context, con, cur, person_date)
+        elif update.message.text == 'Все пациенты':
+            await menu_121_take(update, context, con, cur, person_date, is_active=False)
+            change_tg_menu(person_date[1], 121, con, cur)
+        elif update.message.text == 'Пациенты активные':
+            await menu_121_take(update, context, con, cur, person_date, is_active=True)
+            change_tg_menu(person_date[1], 121, con, cur)
         else:
             await menu_101_main_menu(update, context, con, cur, person_date)
     elif person_date[4] == 104:
@@ -553,6 +802,14 @@ async def admin_text_message_handler(update: Update, context: CallbackContext, c
         await menu_114_get(update, context, con, cur, person_date, False)
     elif person_date[4] == 115:
         await menu_115_get(update, context, con, cur, person_date, False)
+    elif person_date[4] == 122:
+        await menu_122_get(update, context, con, cur, person_date, False)
+    elif person_date[4] == 123:
+        await menu_123_get(update, context, con, cur, person_date, False)
+    elif person_date[4] == 124:
+        await menu_124_get(update, context, con, cur, person_date, False)
+    elif person_date[4] == 125:
+        await menu_125_get(update, context, con, cur, person_date, False)
 
 
 async def admin_contact_handler(update: Update, context: CallbackContext, con, cur, person_date):

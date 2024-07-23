@@ -12,7 +12,6 @@ for id in admins:
     is_admin_menu[id] = True
 
 
-
 def create_con():
     global con, cur, timer_con
     text = f'Срок действия курсора вышел ({int(time.time() - timer_con)}сек.)'
@@ -77,6 +76,15 @@ async def start(update: Update, context: CallbackContext) -> None:
         await menu_2_main_menu(update, context, con, cur, person_date)
 
 
+async def switch_admin(update: Update, context: CallbackContext) -> None:
+    check_timer_con()
+    person_date = get_data_of_person(update.message)
+    if check_is_admin(person_date):
+        is_admin_menu[person_date[1]] = not is_admin_menu[person_date[1]]
+    await start(update, context)
+
+
+
 # Обработчик нажатия кнопок
 async def button_handler(update: Update, context: CallbackContext) -> None:
     check_timer_con()
@@ -119,7 +127,7 @@ async def button_handler(update: Update, context: CallbackContext) -> None:
         to_del_message[person_date[1]] = message.message_id
 
     if query.data == 'back_to_7' and (person_date[4] == 3 or person_date[4] == 4):
-        await delete_message(update, context, person_date, to_del_message)
+        await delete_message(update, context, to_del_message[person_date[1]])
 
         change_tg_menu(person_date[1], 2, con, cur)
         await menu_7(update, context, con, cur, person_date, 0)
@@ -171,6 +179,7 @@ def main():
 
     # Регистрируем обработчик команды /start
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler('switch', switch_admin))
 
     # Регистрируем обработчик callback-кнопок
     application.add_handler(CallbackQueryHandler(button_handler))

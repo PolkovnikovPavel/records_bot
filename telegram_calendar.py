@@ -56,9 +56,9 @@ def create_calendar(year=None,month=None, first_day: datetime=None, ignored_days
                         if ignored_day == d:
                             is_continue = True
                             if is_data:
-                                row.append(InlineKeyboardButton(s + ' ' + str(day), callback_data=create_callback_data("DAY", year, month, day)))
+                                row.append(InlineKeyboardButton(s + str(day), callback_data=create_callback_data("DAY", year, month, day)))
                                 break
-                            row.append(InlineKeyboardButton(s + ' ' + str(day), callback_data=data_ignore))
+                            row.append(InlineKeyboardButton(s + str(day), callback_data=data_ignore))
                             break
                     if is_continue:
                         continue
