@@ -15,12 +15,29 @@ def get_count_minutes(time):
     return hour * 60 + minut
 
 
+def change_tg_menu(tg_id, new_type, con, cur):
+    inquiry = f"""UPDATE accounts
+    SET tg_menu = {new_type}
+        WHERE tg_id = '{tg_id}'"""
+    cur.execute(inquiry)
+    con.commit()
+
+
 async def delete_message(update, context, to_del_message):
     if to_del_message is not None:
         await context.bot.delete_message(
             chat_id=update.effective_chat.id,
             message_id=to_del_message
         )
+
+
+async def delete_messages(update, context, to_del_messages):
+    for id in to_del_messages:
+        if id is not None:
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=id
+            )
 
 
 def get_first_ignored_and_last_days(cur):

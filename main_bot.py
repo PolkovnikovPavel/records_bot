@@ -1,5 +1,12 @@
-from client_dialogs import *
+from client_dialogs import client_button_handler, client_text_message_handler, client_contact_handler, menu_1_take
 from admin_dialogs import admin_button_handler, admin_text_message_handler, admin_contact_handler, check_is_admin, menu_100_welcome
+from support_functions import change_tg_menu
+from auth import *
+
+import sqlite3
+import time
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 
 con = sqlite3.connect('data/db.db')
 cur = con.cursor()
@@ -67,22 +74,21 @@ async def start(update: Update, context: CallbackContext) -> None:
         if is_admin_menu[person_date[1]]:
             await menu_100_welcome(update, context, con, cur, person_date)
             return
-
     if person_date[4] == 1:
-        await menu_1_welcome(update, context, con, cur, person_date)
-        change_tg_menu(person_date[1], 5, con, cur)
+        await menu_1_take(update, context, con, cur, person_date)
     else:
-        change_tg_menu(person_date[1], 2, con, cur)
-        await menu_2_main_menu(update, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 3, con, cur)
+        person_date = get_data_of_person(update.message)
+        await client_text_message_handler(update, context, con, cur, person_date)
 
 
+# Обработчик команды /switch для админов
 async def switch_admin(update: Update, context: CallbackContext) -> None:
     check_timer_con()
     person_date = get_data_of_person(update.message)
     if check_is_admin(person_date):
         is_admin_menu[person_date[1]] = not is_admin_menu[person_date[1]]
     await start(update, context)
-
 
 
 # Обработчик нажатия кнопок
@@ -94,43 +100,10 @@ async def button_handler(update: Update, context: CallbackContext) -> None:
             await admin_button_handler(update, context, con, cur, person_date)
             return
 
+    await client_button_handler(update, context, con, cur, person_date)
+
     query = update.callback_query
     await query.answer()
-
-    if query.data == 'cancel':
-        change_tg_menu(person_date[1], 2, con, cur)
-        await menu_2_main_menu(update.callback_query, context, con, cur, person_date)
-        await query.edit_message_text(text='Действие отменено')
-
-    if query.data == 'user_name':
-        text = "Как вас подписать в расписании, чтоб было понятно кто вы?"
-
-        keyboard = [
-            [InlineKeyboardButton("Назад", callback_data='back_to_7')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        change_tg_menu(person_date[1], 3, con, cur)
-        await query.edit_message_text(text=text, reply_markup=reply_markup)
-
-    if query.data == 'phone_number':
-        text = "Укажите ваш номер телефона, чтобы мы могли перезвонить для уточнения записи"
-        keyboard = [
-            [InlineKeyboardButton("Назад", callback_data='back_to_7')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        change_tg_menu(person_date[1], 4, con, cur)
-        await query.edit_message_text(text=text, reply_markup=reply_markup)
-
-        keyboard = [[KeyboardButton("Отправить номер телефона", request_contact=True)]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        message = await query.message.reply_text('📞', reply_markup=reply_markup)
-        to_del_message[person_date[1]] = message.message_id
-
-    if query.data == 'back_to_7' and (person_date[4] == 3 or person_date[4] == 4):
-        await delete_message(update, context, to_del_message[person_date[1]])
-
-        change_tg_menu(person_date[1], 2, con, cur)
-        await menu_7(update, context, con, cur, person_date, 0)
 
 
 # Обработчик получения контакта
@@ -141,11 +114,7 @@ async def contact_handler(update: Update, context: CallbackContext) -> None:
         if is_admin_menu[person_date[1]]:
             await admin_contact_handler(update, context, con, cur, person_date)
             return
-
-    if person_date[4] == 6:
-        await menu_6_get_phone_number(update, context, con, cur, person_date)
-    elif person_date[4] == 4:
-        await menu_4_get_phone_number(update, context, con, cur, person_date, last_inlines=last_inlines, to_del_message=to_del_message)
+    await client_contact_handler(update, context, con, cur, person_date)
 
 
 # Обработчик текстовых сообщений
@@ -156,20 +125,8 @@ async def text_message_handler(update: Update, context: CallbackContext) -> None
         if is_admin_menu[person_date[1]]:
             await admin_text_message_handler(update, context, con, cur, person_date)
             return
+    await client_text_message_handler(update, context, con, cur, person_date)
 
-    if person_date[4] == 5:
-        await menu_5_get_name(update, context, con, cur, person_date)
-    elif person_date[4] == 6:
-        await menu_6_get_phone_number(update, context, con, cur, person_date)
-    elif person_date[4] == 2:
-        if update.message.text == 'Обновить контактную информацию':
-            await menu_7(update, context, con, cur, person_date, last_inlines=last_inlines)
-        elif update.message.text == 'Общее расписание':
-            await menu_8_general_timetable(update, context, con, cur, person_date)
-        else:
-            await menu_2_main_menu(update, context, con, cur, person_date)
-    elif person_date[4] == 3:
-        await menu_3_get_name(update, context, con, cur, person_date, last_inlines=last_inlines)
 
 def main():
     # Создание подключения к базе данных
