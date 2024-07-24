@@ -22,6 +22,14 @@ def add_person_to_list(tg_id):
         to_del_messages[tg_id] = []
 
 
+async def check_is_baned(update: Update, context: CallbackContext, con, cur, person_date):
+    if person_date[8]:
+        text = "Ваш аккаунт был заблокирован, вы не можете пользоваться ботом"
+        await update.message.reply_text(text)
+        return True
+    return False
+
+
 async def menu_0_get(update: Update, context: CallbackContext, con, cur, person_date):
     text = "Добро пожаловать! Это система автоматической записи на массаж."
 
@@ -281,6 +289,8 @@ async def menu_3_main_menu(update: Update, context: CallbackContext, con, cur, p
 
 
 async def client_button_handler(update: Update, context: CallbackContext, con, cur, person_date):
+    if await check_is_baned(update, context, con, cur, person_date):
+        return
     add_person_to_list(person_date[1])
     if person_date[4] == 11:
         await menu_11_get(update, context, con, cur, person_date)
@@ -291,6 +301,8 @@ async def client_button_handler(update: Update, context: CallbackContext, con, c
 
 
 async def client_text_message_handler(update: Update, context: CallbackContext, con, cur, person_date):
+    if await check_is_baned(update, context, con, cur, person_date):
+        return
     add_person_to_list(person_date[1])
     if person_date[4] == 1:
         await menu_1_get(update, context, con, cur, person_date)
@@ -312,6 +324,8 @@ async def client_text_message_handler(update: Update, context: CallbackContext, 
 
 
 async def client_contact_handler(update: Update, context: CallbackContext, con, cur, person_date):
+    if await check_is_baned(update, context, con, cur, person_date):
+        return
     add_person_to_list(person_date[1])
     if person_date[4] == 2:
         await menu_2_get(update, context, con, cur, person_date)
