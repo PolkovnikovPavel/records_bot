@@ -51,7 +51,7 @@ def get_first_ignored_and_last_days(cur):
     for i in range(len(result)):
         date = datetime.datetime.strptime(result[i][1], '%d.%m.%Y')
         if date == first_day:
-            ignored_days.append((date, '*', True))
+            ignored_days.append((date, '📌', True))
             continue
         cur.execute(f'''SELECT DISTINCT patient_id FROM records
                             WHERE day_id = {result[i][0]}''')
@@ -62,7 +62,44 @@ def get_first_ignored_and_last_days(cur):
             ignored_days.append((date, '◉', True))
 
     if first_day not in ignored_days:
-        ignored_days.append((first_day, '*', True))
+        ignored_days.append((first_day, '📌', True))
+    return first_day, ignored_days, last_day
+
+
+def get_clients_first_ignored_and_last_days(cur, user_id):
+    now = datetime.datetime.now()
+    first_day = datetime.datetime(now.year, now.month, now.day)
+    last_day = first_day + datetime.timedelta(days=31)
+
+    cur.execute(f'''SELECT * FROM days ORDER BY id DESC LIMIT 31''')
+    result = cur.fetchall()
+
+    data_date = []
+    for i in range(len(result)):
+        date = datetime.datetime.strptime(result[i][1], '%d.%m.%Y')
+        data_date.append((result[i][0], date))
+
+    ignored_days = []
+    data = datetime.datetime(now.year, now.month, now.day) - datetime.timedelta(days=1)
+    while data <= last_day:
+        data += datetime.timedelta(days=1)
+        this_date = list(filter(lambda x: x[1] == data, data_date))
+        if this_date:
+            cur.execute(f'''SELECT DISTINCT patient_id FROM records
+            WHERE day_id = {this_date[0][0]} AND (patient_id = {user_id} OR patient_id IS NULL)''')
+            records = cur.fetchall()
+            if data == first_day:
+                if any(map(lambda x: x[0] is None, records)):
+                    ignored_days.append((data, '📌', True))
+                else:
+                    ignored_days.append((data, '📌', False))
+                continue
+            if any(map(lambda x: x[0] == user_id, records)):
+                ignored_days.append((data, '◉', True))
+            else:
+                ignored_days.append((data, '⭘', True))
+        else:
+            ignored_days.append((data, '', False))
     return first_day, ignored_days, last_day
 
 

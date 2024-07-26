@@ -15,6 +15,8 @@ selected_template = {}
 selected_account = {}
 is_active_account = {}
 
+# TODO сделать возможность добавлять пользователей только по имени и номеру телефона
+
 
 def change_tg_menu(tg_id, new_type, con, cur):
     inquiry = f"""UPDATE accounts

@@ -16,7 +16,7 @@ to_del_message = {}
 
 is_admin_menu = {}
 for id in admins:
-    is_admin_menu[id] = True
+    is_admin_menu[id] = False
 
 
 def create_con():
