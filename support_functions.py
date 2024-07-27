@@ -86,7 +86,7 @@ def get_clients_first_ignored_and_last_days(cur, user_id):
         this_date = list(filter(lambda x: x[1] == data, data_date))
         if this_date:
             cur.execute(f'''SELECT DISTINCT patient_id FROM records
-            WHERE day_id = {this_date[0][0]} AND (patient_id = {user_id} OR patient_id IS NULL)''')
+            WHERE day_id = {this_date[0][0]} AND is_cancel = 0 AND (patient_id = {user_id} OR patient_id IS NULL)''')
             records = cur.fetchall()
             if data == first_day:
                 if any(map(lambda x: x[0] is None, records)):
@@ -147,8 +147,25 @@ def get_timetable_by_user(cur, patient_id):
     return res
 
 
+def get_future_records(cur, patient_id):
+    cur.execute(f'''SELECT DISTINCT records.time, days.date, records.id FROM records, days
+    WHERE days.id = records.day_id AND records.is_cancel = 0 AND records.patient_id = {patient_id}''')
+    result = cur.fetchall()
+
+    now = datetime.datetime.now() - datetime.timedelta(days=1)
+    records_data = []
+    for i in range(len(result)):
+        date = datetime.datetime.strptime(result[i][1], '%d.%m.%Y')
+        if date < now:
+            continue
+        records_data.append((result[i][0], date, result[i][2]))
+    records_data.sort(key=lambda x: x[1])
+    return records_data
+
+
 if __name__ == '__main__':
     import sqlite3
     con = sqlite3.connect('data/db.db')
     cur = con.cursor()
-    print(get_timetable_by_user(cur, 2))
+    x = get_future_records(cur, 5)
+    print(x)

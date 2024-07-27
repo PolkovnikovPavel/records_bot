@@ -1,6 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 
+import auth
 import telegram_calendar
 import support_functions
 
@@ -11,6 +12,7 @@ last_inlines = {}
 to_del_messages = {}
 calendar_data = {}
 selected_record = {}
+records_to_cancel = {}
 
 
 def change_tg_menu(tg_id, new_type, con, cur):
@@ -24,6 +26,11 @@ def change_tg_menu(tg_id, new_type, con, cur):
 def add_person_to_list(tg_id):
     if tg_id not in to_del_messages:
         to_del_messages[tg_id] = []
+
+
+async def spam_to_admins(context: CallbackContext, message):
+    for admin_id in auth.admins:
+        await context.bot.send_message(text=message, chat_id=admin_id)
 
 
 async def check_is_baned(update: Update, context: CallbackContext, con, cur, person_date):
@@ -278,6 +285,7 @@ async def menu_14_take(update: Update, context: CallbackContext, con, cur, perso
 
 # ======================================================================================= Запись на приём
 
+# TODO добавить уведомление о записи для не доверенных пользователей
 
 async def menu_21_take(update: Update, context: CallbackContext, con, cur, person_date):
     now = datetime.datetime.now()
@@ -329,8 +337,6 @@ async def menu_22_take(update: Update, context: CallbackContext, con, cur, perso
     result = cur.fetchall()
     if result:
         cur.execute(f'''SELECT DISTINCT * FROM records
-            WHERE day_id = {result[0][0]} AND (patient_id IS NULL OR patient_id = {person_date[0]}) AND is_cancel = 0''')
-        print(f'''SELECT DISTINCT * FROM records
             WHERE day_id = {result[0][0]} AND (patient_id IS NULL OR patient_id = {person_date[0]}) AND is_cancel = 0''')
         result = cur.fetchall()
         keyboard = []
@@ -444,6 +450,136 @@ async def menu_23_get(update: Update, context: CallbackContext, con, cur, person
         change_tg_menu(person_date[1], 22, con, cur)
 
 
+# ======================================================================================= Моё расписание
+
+
+async def menu_31_take(update: Update, context: CallbackContext, con, cur, person_date, message_id=None):
+    records_data = support_functions.get_future_records(cur, person_date[0])
+    records_text = []
+    num = 0
+    for time, date, record_id in records_data:
+        num += 1
+        records_text.append(f'{num}) {date.strftime("%d.%m.%Y")} ({telegram_calendar.week_days[date.weekday()]}) в {time}')
+
+    cur.execute(f'''SELECT DISTINCT * FROM admin_data''')
+    result = cur.fetchall()
+    address = list(filter(lambda x: x[1] == 'address', result))[0][2]
+    name_specialist = list(filter(lambda x: x[1] == 'name', result))[0][2]
+
+    temp = '\n'.join(records_text)
+    text = f'Ваше ближайшее расписание {name_specialist} по адресу "{address}":\n{temp}'
+    keyboard = [
+        [InlineKeyboardButton(f"Отменить запись", callback_data=f'cancel_recording'),
+         InlineKeyboardButton(f"Готово", callback_data=f'exit')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if message_id:
+        await context.bot.edit_message_text(text=text,
+                                            chat_id=person_date[1],
+                                            message_id=message_id,
+                                            reply_markup=reply_markup)
+        last_inlines[person_date[1]] = message_id
+    else:
+        massage = await update.message.reply_text(text=text, reply_markup=reply_markup)
+        last_inlines[person_date[1]] = massage.message_id
+
+
+async def menu_31_get(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'exit':
+        await context.bot.edit_message_text(text=query.message.text,
+                                            chat_id=person_date[1],
+                                            message_id=query.message.message_id)
+        await menu_3_main_menu(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 3, con, cur)
+        return
+
+    records_to_cancel[person_date[1]] = []
+    await menu_32_take(update, context, con, cur, person_date)
+    change_tg_menu(person_date[1], 32, con, cur)
+
+
+async def menu_32_take(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+
+    records_data = support_functions.get_future_records(cur, person_date[0])
+    records_text = []
+    keyboard = []
+    num = 0
+    for time, date, record_id in records_data:
+        num += 1
+        t = f'{num}) {date.strftime("%d.%m.%Y")} ({telegram_calendar.week_days[date.weekday()]}) в {time}'
+        records_text.append(t)
+        if record_id in records_to_cancel[person_date[1]]:
+            keyboard.append([InlineKeyboardButton(f"❌ {t}", callback_data=f'cancel_{record_id}')])
+        else:
+            keyboard.append([InlineKeyboardButton(f"✅ {t}", callback_data=f'cancel_{record_id}')])
+
+    keyboard.append([InlineKeyboardButton(f"Сохранить", callback_data=f'save')])
+
+    temp = '\n'.join(records_text)
+    text = f'''Укажите, какие записи вы хотите отменить (нажимайте на кнопки ниже), в конце обязательно сохраните.\n
+Ваши записи, для удобства пронумерованы:\n{temp}'''
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.edit_message_text(text=text,
+                                        reply_markup=reply_markup,
+                                        chat_id=person_date[1],
+                                        message_id=query.message.message_id)
+
+
+async def menu_32_get(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'save':
+        if len(records_to_cancel[person_date[1]]) == 0:
+            await menu_31_take(update, context, con, cur, person_date, query.message.message_id)
+            change_tg_menu(person_date[1], 31, con, cur)
+            return
+
+        del_list = []
+        for id in records_to_cancel[person_date[1]]:
+            del_list.append(f'id = {id}')
+        del_list = ' OR '.join(del_list)
+
+        inquiry = f"""UPDATE records
+                    SET patient_id = NULL, is_verification = 0, is_reminder = 0, is_ended = 0
+                        WHERE {del_list}"""
+        cur.execute(inquiry)
+        con.commit()
+
+        del_list = []
+        for id in records_to_cancel[person_date[1]]:
+            del_list.append(f'records.id = {id}')
+        del_list = ' OR '.join(del_list)
+        cur.execute(f'''SELECT DISTINCT records.time, days.date FROM records, days
+        WHERE days.id = records.day_id AND records.is_cancel = 0 AND ({del_list})''')
+        result = cur.fetchall()
+
+        text = f'Пользователь "{person_date[2]}" ({person_date[3]}) Отменил следующие записи:\n'
+        for time, date in result:
+            date = datetime.datetime.strptime(date, '%d.%m.%Y')
+            week = telegram_calendar.week_days[date.weekday()]
+            text += f'📅 {date.strftime("%d.%m.%Y")} ({week}) ⏰ {time}\n'
+
+        await spam_to_admins(context, text)
+
+        await menu_31_take(update, context, con, cur, person_date, query.message.message_id)
+        change_tg_menu(person_date[1], 31, con, cur)
+    elif 'cancel_' in query.data:
+        record_id = int(query.data.split('_')[1])
+        if record_id in records_to_cancel[person_date[1]]:
+            records_to_cancel[person_date[1]].remove(record_id)
+        else:
+            records_to_cancel[person_date[1]].append(record_id)
+
+        await menu_32_take(update, context, con, cur, person_date)
+
+
 # =========================================================================================== Главное меню
 
 
@@ -453,7 +589,7 @@ async def menu_3_main_menu(update: Update, context: CallbackContext, con, cur, p
     keyboard = [
         ['Записаться на приём'],
         ['Моё расписание'],
-        ['Общее расписание', 'Описание'],
+        ['Общее расписание', 'Мои жалобы'],
         ['Обновить контактную информацию']
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
@@ -476,6 +612,10 @@ async def client_button_handler(update: Update, context: CallbackContext, con, c
         await menu_22_get(update, context, con, cur, person_date)
     elif person_date[4] == 23:
         await menu_23_get(update, context, con, cur, person_date)
+    elif person_date[4] == 31:
+        await menu_31_get(update, context, con, cur, person_date)
+    elif person_date[4] == 32:
+        await menu_32_get(update, context, con, cur, person_date)
 
 
 async def client_text_message_handler(update: Update, context: CallbackContext, con, cur, person_date):
@@ -495,6 +635,9 @@ async def client_text_message_handler(update: Update, context: CallbackContext, 
         elif update.message.text == 'Записаться на приём':
             await menu_21_take(update, context, con, cur, person_date)
             change_tg_menu(person_date[1], 21, con, cur)
+        elif update.message.text == 'Моё расписание':
+            await menu_31_take(update, context, con, cur, person_date)
+            change_tg_menu(person_date[1], 31, con, cur)
         else:
             await menu_3_main_menu(update, context, con, cur, person_date)
 

@@ -568,7 +568,7 @@ async def menu_122_take(update: Update, context: CallbackContext, con, cur, pers
     account = cur.fetchall()[0]
 
     cur.execute(f'''SELECT id FROM records
-            WHERE patient_id = {selected_account[person_date[1]]}''')
+            WHERE patient_id = {selected_account[person_date[1]]} AND is_cancel = 0''')
     result = cur.fetchall()
 
     text = f'''{account[2]}\n
@@ -583,8 +583,8 @@ async def menu_122_take(update: Update, context: CallbackContext, con, cur, pers
 
 
     keyboard = [[],
-                [InlineKeyboardButton("📓 Добавить описание", callback_data='add_description'),
-                 InlineKeyboardButton("📓 Заменить описание", callback_data='set_description')],
+                [InlineKeyboardButton("✏ Добавить описание", callback_data='add_description'),
+                 InlineKeyboardButton("📃 Заменить описание", callback_data='set_description')],
                 [InlineKeyboardButton("📅 Расписание", callback_data='timetable'),
                  InlineKeyboardButton("Изменить имя", callback_data='new_name')],
                 [InlineKeyboardButton(verify[0], callback_data=verify[1]),
