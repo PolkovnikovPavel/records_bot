@@ -16,7 +16,9 @@ to_del_message = {}
 
 is_admin_menu = {}
 for id in admins:
-    is_admin_menu[id] = False
+    is_admin_menu[id] = True
+
+# TODO сделать прерывание на каждые пол часа, которое будет отвечать за рассылку (оповещения, опросы)
 
 
 def create_con():

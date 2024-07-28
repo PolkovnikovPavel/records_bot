@@ -12,6 +12,7 @@ last_inlines = {}
 to_del_messages = {}
 calendar_data = {}
 selected_record = {}
+added_records = {}
 records_to_cancel = {}
 
 
@@ -26,11 +27,35 @@ def change_tg_menu(tg_id, new_type, con, cur):
 def add_person_to_list(tg_id):
     if tg_id not in to_del_messages:
         to_del_messages[tg_id] = []
+    if tg_id not in added_records:
+        added_records[tg_id] = []
 
 
 async def spam_to_admins(context: CallbackContext, message):
     for admin_id in auth.admins:
         await context.bot.send_message(text=message, chat_id=admin_id)
+
+
+async def send_added_records_to_admins(update: Update, context: CallbackContext, con, cur, person_date):
+    if len(added_records[person_date[1]]) == 0 or person_date[7]:
+        return
+    ids = []
+    for id in added_records[person_date[1]]:
+        ids.append(f'records.id = {id}')
+    ids = ' OR '.join(ids)
+    cur.execute(f'''SELECT DISTINCT records.time, days.date FROM records, days
+    WHERE days.id = records.day_id AND ({ids}) ''')
+    result = cur.fetchall()
+    text = []
+
+    for time, date in result:
+        date = datetime.datetime.strptime(date, "%d.%m.%Y")
+        week = telegram_calendar.week_days[date.weekday()]
+        text.append(f'📅 {date.strftime("%d.%m.%Y")} ({week}) - ⏰ {time}')
+
+    text = f'Пользователь {person_date[2]} (+{person_date[3]}) записался на приём:\n' + '\n'.join(text)
+    await spam_to_admins(context, text)
+    added_records[person_date[1]] = []
 
 
 async def check_is_baned(update: Update, context: CallbackContext, con, cur, person_date):
@@ -285,8 +310,6 @@ async def menu_14_take(update: Update, context: CallbackContext, con, cur, perso
 
 # ======================================================================================= Запись на приём
 
-# TODO добавить уведомление о записи для не доверенных пользователей
-
 async def menu_21_take(update: Update, context: CallbackContext, con, cur, person_date):
     now = datetime.datetime.now()
     first_day, ignored_days, last_day = support_functions.get_clients_first_ignored_and_last_days(cur, person_date[0])
@@ -313,6 +336,7 @@ async def menu_21_get(update: Update, context: CallbackContext, con, cur, person
             return
         if selected:
             if date is None:
+                await send_added_records_to_admins(update, context, con, cur, person_date)
                 await menu_3_main_menu(query, context, con, cur, person_date)
                 change_tg_menu(person_date[1], 3, con, cur)
                 return
@@ -420,34 +444,64 @@ async def menu_23_get(update: Update, context: CallbackContext, con, cur, person
         return
 
     if query.data == 'yes':
+        added_records[person_date[1]].append(selected_record[person_date[1]])
         inquiry = f"""UPDATE records
             SET patient_id = {person_date[0]}
                 WHERE id = {selected_record[person_date[1]]}"""
         cur.execute(inquiry)
         con.commit()
-
-        cur.execute(f'''SELECT DISTINCT * FROM admin_data''')
-        result = cur.fetchall()
-        address = list(filter(lambda x: x[1] == 'address', result))[0][2]
-        name_specialist = list(filter(lambda x: x[1] == 'name', result))[0][2]
-
-        cur.execute(f'''SELECT DISTINCT records.time, days.date FROM records, days
-                        WHERE days.id = records.day_id AND records.id = {selected_record[person_date[1]]} ''')
-        result = cur.fetchall()[0]
-        week = telegram_calendar.week_days[calendar_data[person_date[1]][3].weekday()]
-
-        text = f'Вы записаны: {name_specialist}\n📅 {result[1]} ({week})\n⏰ {result[0]}\n🗺️ {address}.\n🔔 За сутки вам придёт напоминание.'
-
-        await context.bot.edit_message_text(text=text,
-                                            chat_id=person_date[1],
-                                            message_id=query.message.message_id)
-
-        await menu_3_main_menu(query, context, con, cur, person_date)
-        change_tg_menu(person_date[1], 3, con, cur)
-
+        await menu_24_take(update, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 24, con, cur)
     else:
         await menu_22_take(update, context, con, cur, person_date, query.message.message_id, calendar_data[person_date[1]][3])
         change_tg_menu(person_date[1], 22, con, cur)
+
+
+async def menu_24_take(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+
+    cur.execute(f'''SELECT DISTINCT * FROM admin_data''')
+    result = cur.fetchall()
+    address = list(filter(lambda x: x[1] == 'address', result))[0][2]
+    name_specialist = list(filter(lambda x: x[1] == 'name', result))[0][2]
+
+    cur.execute(f'''SELECT DISTINCT records.time, days.date FROM records, days
+                            WHERE days.id = records.day_id AND records.id = {selected_record[person_date[1]]} ''')
+    result = cur.fetchall()[0]
+    week = telegram_calendar.week_days[calendar_data[person_date[1]][3].weekday()]
+
+    text = f'Вы записаны: {name_specialist}\n📅 {result[1]} ({week})\n⏰ {result[0]}\n🗺️ {address}.\n🔔 За сутки вам придёт напоминание.'
+    keyboard = [
+        [InlineKeyboardButton(f"Записаться ещё", callback_data=f'continue'),
+         InlineKeyboardButton(f"Готово", callback_data=f'done')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.edit_message_text(text=text,
+                                        reply_markup=reply_markup,
+                                        chat_id=person_date[1],
+                                        message_id=query.message.message_id)
+
+
+async def menu_24_get(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'done':
+        await context.bot.edit_message_text(text=query.message.text,
+                                            chat_id=person_date[1],
+                                            message_id=query.message.message_id)
+
+        await send_added_records_to_admins(update, context, con, cur, person_date)
+
+        await menu_3_main_menu(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 3, con, cur)
+    elif query.data == 'continue':
+        await context.bot.edit_message_text(text=query.message.text,
+                                            chat_id=person_date[1],
+                                            message_id=query.message.message_id)
+        await menu_21_take(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 21, con, cur)
 
 
 # ======================================================================================= Моё расписание
@@ -459,7 +513,7 @@ async def menu_31_take(update: Update, context: CallbackContext, con, cur, perso
     num = 0
     for time, date, record_id in records_data:
         num += 1
-        records_text.append(f'{num}) {date.strftime("%d.%m.%Y")} ({telegram_calendar.week_days[date.weekday()]}) в {time}')
+        records_text.append(f'{num}) 📅 {date.strftime("%d.%m.%Y")} ({telegram_calendar.week_days[date.weekday()]}) - ⏰ {time}')
 
     cur.execute(f'''SELECT DISTINCT * FROM admin_data''')
     result = cur.fetchall()
@@ -560,7 +614,7 @@ async def menu_32_get(update: Update, context: CallbackContext, con, cur, person
         WHERE days.id = records.day_id AND records.is_cancel = 0 AND ({del_list})''')
         result = cur.fetchall()
 
-        text = f'Пользователь "{person_date[2]}" ({person_date[3]}) Отменил следующие записи:\n'
+        text = f'Пользователь "{person_date[2]}" (+{person_date[3]}) Отменил следующие записи:\n'
         for time, date in result:
             date = datetime.datetime.strptime(date, '%d.%m.%Y')
             week = telegram_calendar.week_days[date.weekday()]
@@ -578,6 +632,109 @@ async def menu_32_get(update: Update, context: CallbackContext, con, cur, person
             records_to_cancel[person_date[1]].append(record_id)
 
         await menu_32_take(update, context, con, cur, person_date)
+
+
+# =========================================================================================== Мои жалобы
+
+# TODO обязать написание жалобы, если нет активных (активная - это нет хотя бы одной оценки из двух)
+async def menu_41_take(update: Update, context: CallbackContext, con, cur, person_date, message_id=None):
+    cur.execute(f'''SELECT DISTINCT * FROM complaints 
+    WHERE user_id = {person_date[0]}''')
+    result = cur.fetchall()
+
+    if len(result) == 0:
+        text = f'''В этом разделе будут отображаться ваши жалобы, когда вы их добавите, это нужно, чтоб специалист мог понимать с чем предстоит работать и оценить эффективность работы.
+    \n❗ Для каждой жалобы будет 2 опросника после процедур'''
+        keyboard = [
+            [InlineKeyboardButton(f"Добавить жалобу", callback_data=f'add'),
+             InlineKeyboardButton(f"Назад", callback_data=f'back')]
+        ]
+    else:
+        text = []
+        for i in range(len(result)):
+            grad_1, grad_2 = result[i][4], result[i][5]
+            if grad_1 is None:
+                grad_1 = '—'
+            if grad_2 is None:
+                grad_2 = '—'
+            text.append(f'📌 {result[i][2]} - {result[i][3]}\nОценка до: {grad_1}\nПосле: {grad_2}')
+        text = 'Все ваши жалобы:\n' + '\n'.join(text)
+        keyboard = [
+            [InlineKeyboardButton(f"Добавить жалобу", callback_data=f'add'),
+             InlineKeyboardButton(f"Готово", callback_data=f'back')]
+        ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if message_id:
+        await context.bot.edit_message_text(text=text,
+                                            chat_id=person_date[1],
+                                            message_id=message_id,
+                                            reply_markup=reply_markup)
+        last_inlines[person_date[1]] = message_id
+    else:
+        massage = await update.message.reply_text(text=text, reply_markup=reply_markup)
+        last_inlines[person_date[1]] = massage.message_id
+
+
+async def menu_41_get(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'back':
+        cur.execute(f'''SELECT DISTINCT * FROM complaints 
+        WHERE user_id = {person_date[0]}''')
+        result = cur.fetchall()
+        if len(result) == 0:
+            await support_functions.delete_message(update, context, query.message.message_id)
+            await menu_3_main_menu(query, context, con, cur, person_date)
+            change_tg_menu(person_date[1], 3, con, cur)
+            return
+        await context.bot.edit_message_text(text=query.message.text,
+                                            chat_id=person_date[1],
+                                            message_id=query.message.message_id)
+        await menu_3_main_menu(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 3, con, cur)
+        return
+    elif query.data == 'add':
+        await menu_42_take(update, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 42, con, cur)
+
+
+async def menu_42_take(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+    text = 'Кратко опишите на что жалуетесь'
+    keyboard = [
+        [InlineKeyboardButton(f"Назад", callback_data=f'back')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.edit_message_text(text=text,
+                                        reply_markup=reply_markup,
+                                        chat_id=person_date[1],
+                                        message_id=query.message.message_id)
+
+
+async def menu_42_get(update: Update, context: CallbackContext, con, cur, person_date, is_inline=False):
+    if is_inline:
+        change_tg_menu(person_date[1], 41, con, cur)
+        await menu_41_take(update, context, con, cur, person_date, last_inlines[person_date[1]])
+        return
+    answer = update.message.text
+
+    if answer.lower() == 'отмена' or answer.lower() == 'назад' or answer.lower() == 'стоп':
+        change_tg_menu(person_date[1], 3, con, cur)
+        await menu_3_main_menu(update, context, con, cur, person_date)
+        return
+    new_complaint = answer
+    now = datetime.datetime.now()
+
+    inquiry = f"""INSERT INTO complaints (user_id, date, text)
+    VALUES ({person_date[0]}, '{now.strftime("%d.%m.%Y")}', '{new_complaint}')"""
+    cur.execute(inquiry)
+    con.commit()
+
+    await support_functions.delete_message(update, context, update.message.message_id)
+    await menu_41_take(update, context, con, cur, person_date, last_inlines[person_date[1]])
+    change_tg_menu(person_date[1], 41, con, cur)
 
 
 # =========================================================================================== Главное меню
@@ -612,10 +769,16 @@ async def client_button_handler(update: Update, context: CallbackContext, con, c
         await menu_22_get(update, context, con, cur, person_date)
     elif person_date[4] == 23:
         await menu_23_get(update, context, con, cur, person_date)
+    elif person_date[4] == 24:
+        await menu_24_get(update, context, con, cur, person_date)
     elif person_date[4] == 31:
         await menu_31_get(update, context, con, cur, person_date)
     elif person_date[4] == 32:
         await menu_32_get(update, context, con, cur, person_date)
+    elif person_date[4] == 41:
+        await menu_41_get(update, context, con, cur, person_date)
+    elif person_date[4] == 42:
+        await menu_42_get(update, context, con, cur, person_date, True)
 
 
 async def client_text_message_handler(update: Update, context: CallbackContext, con, cur, person_date):
@@ -638,6 +801,9 @@ async def client_text_message_handler(update: Update, context: CallbackContext, 
         elif update.message.text == 'Моё расписание':
             await menu_31_take(update, context, con, cur, person_date)
             change_tg_menu(person_date[1], 31, con, cur)
+        elif update.message.text == 'Мои жалобы':
+            await menu_41_take(update, context, con, cur, person_date)
+            change_tg_menu(person_date[1], 41, con, cur)
         else:
             await menu_3_main_menu(update, context, con, cur, person_date)
 
@@ -645,6 +811,8 @@ async def client_text_message_handler(update: Update, context: CallbackContext, 
         await menu_12_get(update, context, con, cur, person_date, False)
     elif person_date[4] == 13:
         await menu_13_get(update, context, con, cur, person_date, False)
+    elif person_date[4] == 42:
+        await menu_42_get(update, context, con, cur, person_date, False)
 
 
 async def client_contact_handler(update: Update, context: CallbackContext, con, cur, person_date):

@@ -13,9 +13,8 @@ last_admin_inlines = {}
 count_deleted_msgs = {}
 selected_template = {}
 selected_account = {}
+selected_admin_data = {}
 is_active_account = {}
-
-# TODO сделать возможность добавлять пользователей только по имени и номеру телефона
 
 
 def change_tg_menu(tg_id, new_type, con, cur):
@@ -168,8 +167,6 @@ async def menu_103_get(update: Update, context: CallbackContext, con, cur, perso
             con.commit()
 
         await menu_103_take(update, context, con, cur, person_date, admin_calendar_data[person_date[1]][3])
-
-    # TODO сделать обработку record_xxx (перенаправление в меню записей)
 
 
 async def menu_104_take(update: Update, context: CallbackContext, con, cur, person_date):
@@ -568,21 +565,41 @@ async def menu_122_take(update: Update, context: CallbackContext, con, cur, pers
     account = cur.fetchall()[0]
 
     cur.execute(f'''SELECT id FROM records
-            WHERE patient_id = {selected_account[person_date[1]]} AND is_cancel = 0''')
+        WHERE patient_id = {selected_account[person_date[1]]} AND is_cancel = 0''')
     result = cur.fetchall()
 
+    cur.execute(f'''SELECT * FROM complaints
+        WHERE user_id = {selected_account[person_date[1]]}''')
+    all_complaints = cur.fetchall()
+    complaints = []
+    for i in range(len(all_complaints)):
+        grad_1, grad_2 = all_complaints[i][4], all_complaints[i][5]
+        if grad_1 is None:
+            grad_1 = '—'
+        if grad_2 is None:
+            grad_2 = '—'
+        complaints.append(f'📌 {all_complaints[i][2]} - {all_complaints[i][3]}\nОценка до: {grad_1}\nПосле: {grad_2}')
+    complaints = '\n'.join(complaints)
+
     text = f'''{account[2]}\n
-📞 {account[3]}
+📞 +{account[3]}
 всего записей: {len(result)}
 ====================
-📓 {account[9]}
+📃 Жалобы:
+{complaints}
+
+====================
+📃 Описание:
+{account[9]}
 '''
     verify = ["✔ подтвердить аккаунт", 'verify']
     if account[7]:
         verify = ['✔ Доверенный аккаунт', 'null']
 
+    # TODO сделать кнопку "Завершить курс" чтоб по её нажатии отправлялись все не отправленные опросы
 
     keyboard = [[],
+                [InlineKeyboardButton("✅ Завершить курс", callback_data='close_course')],
                 [InlineKeyboardButton("✏ Добавить описание", callback_data='add_description'),
                  InlineKeyboardButton("📃 Заменить описание", callback_data='set_description')],
                 [InlineKeyboardButton("📅 Расписание", callback_data='timetable'),
@@ -728,6 +745,93 @@ async def menu_125_get(update: Update, context: CallbackContext, con, cur, perso
     change_tg_menu(person_date[1], 122, con, cur)
 
 
+# ============================================================================================== Системная информация
+
+
+async def menu_131_take(update: Update, context: CallbackContext, con, cur, person_date, message_id=None):
+    cur.execute(f'''SELECT DISTINCT * FROM admin_data''')
+    result = cur.fetchall()
+
+    text = []
+    keyboard = []
+    for i in range(len(result)):
+        text.append(f'{i + 1}) {result[i][1]} = "{result[i][2]}"')
+        keyboard.append([InlineKeyboardButton(f"{i + 1}) {result[i][1]}", callback_data=result[i][1])])
+    text = 'Изменяемые системные поля:\n' + '\n'.join(text)
+    keyboard.append([InlineKeyboardButton("❌ Назад", callback_data='back')])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if message_id:
+        await context.bot.edit_message_text(text=text,
+                                            chat_id=person_date[1],
+                                            message_id=message_id,
+                                            reply_markup=reply_markup)
+        last_admin_inlines[person_date[1]] = message_id
+    else:
+        massage = await update.message.reply_text(text=text, reply_markup=reply_markup)
+        last_admin_inlines[person_date[1]] = massage.message_id
+
+
+async def menu_131_get(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'back':
+        await context.bot.edit_message_text(text=query.message.text,
+                                            chat_id=person_date[1],
+                                            message_id=query.message.message_id)
+        await menu_101_main_menu(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 101, con, cur)
+        return
+
+    await menu_132_take(update, context, con, cur, person_date)
+    change_tg_menu(person_date[1], 132, con, cur)
+
+
+async def menu_132_take(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+    name = query.data
+    cur.execute(f'''SELECT DISTINCT * FROM admin_data
+        WHERE name = "{name}"''')
+    result = cur.fetchall()[0]
+
+    selected_admin_data[person_date[1]] = result[0]
+
+    text = f'Введите новое значение для параметра "{name}"\nТекущее значение = "{result[2]}"'
+    keyboard = [[InlineKeyboardButton("❌ Назад", callback_data='back')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.edit_message_text(text=text,
+                                        reply_markup=reply_markup,
+                                        chat_id=person_date[1],
+                                        message_id=query.message.message_id)
+
+
+async def menu_132_get(update: Update, context: CallbackContext, con, cur, person_date, is_inline=False):
+    if is_inline:
+        await menu_131_take(update, context, con, cur, person_date, last_admin_inlines[person_date[1]])
+        change_tg_menu(person_date[1], 131, con, cur)
+        return
+    answer = update.message.text
+
+    if answer.lower() == 'отмена' or answer.lower() == 'назад' or answer.lower() == 'стоп':
+        change_tg_menu(person_date[1], 101, con, cur)
+        await menu_101_main_menu(update, context, con, cur, person_date)
+        return
+
+    inquiry = f"""UPDATE admin_data 
+                SET data = '{update.message.text}' WHERE id = {selected_admin_data[person_date[1]]}"""
+    try:
+        cur.execute(inquiry)
+        con.commit()
+    except Exception as e:
+        print(f'Ошибка при изменении системных данных, запрос "{inquiry}".\n\nОшибка "{e}"')
+        await update.message.reply_text(f'Произошла ошибка запроса изменения данных: {e}')
+
+
+    await support_functions.delete_message(update, context, update.message.message_id)
+    await menu_131_take(update, context, con, cur, person_date, last_admin_inlines[person_date[1]])
+    change_tg_menu(person_date[1], 131, con, cur)
 
 
 # ====================================================================================================== Главное меню
@@ -735,11 +839,15 @@ async def menu_125_get(update: Update, context: CallbackContext, con, cur, perso
 async def menu_101_main_menu(update: Update, context: CallbackContext, con, cur, person_date):
     text = "Главное меню админа"
 
+    # TODO сделать возможность добавлять пользователей только по имени и номеру телефона
+    # TODO сделать отдельный раздел для отмены дня или отмены записи или для открепления пациента от записи
+    # TODO сделать отдельный раздел для записи ЛЮБОГО пользователя
+
     keyboard = [
         ['Добавить расписание'],
-        ["Шаблоны", "Отмены"],
-        ['Пациенты активные', 'Все пациенты'],
-        ['База данных']
+        ["Шаблоны", "Отмены", 'Запись'],
+        ['Пациенты активные', 'Все пациенты', 'Новый пациент'],
+        ['Системная информация']
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text(text, reply_markup=reply_markup)
@@ -772,6 +880,10 @@ async def admin_button_handler(update: Update, context: CallbackContext, con, cu
         await menu_124_get(update, context, con, cur, person_date, True)
     elif person_date[4] == 125:
         await menu_125_get(update, context, con, cur, person_date, True)
+    elif person_date[4] == 131:
+        await menu_131_get(update, context, con, cur, person_date)
+    elif person_date[4] == 132:
+        await menu_132_get(update, context, con, cur, person_date, True)
 
 
 async def admin_text_message_handler(update: Update, context: CallbackContext, con, cur, person_date):
@@ -785,9 +897,9 @@ async def admin_text_message_handler(update: Update, context: CallbackContext, c
         elif update.message.text == 'Шаблоны':
             await menu_111_take(update, context, con, cur, person_date)
             change_tg_menu(person_date[1], 111, con, cur)
-        elif update.message.text == 'База данных':
-            await update.message.reply_text('В разработке')
-            await menu_101_main_menu(update, context, con, cur, person_date)
+        elif update.message.text == 'Системная информация':
+            await menu_131_take(update, context, con, cur, person_date)
+            change_tg_menu(person_date[1], 131, con, cur)
         elif update.message.text == 'Все пациенты':
             await menu_121_take(update, context, con, cur, person_date, is_active=False)
             change_tg_menu(person_date[1], 121, con, cur)
@@ -812,6 +924,8 @@ async def admin_text_message_handler(update: Update, context: CallbackContext, c
         await menu_124_get(update, context, con, cur, person_date, False)
     elif person_date[4] == 125:
         await menu_125_get(update, context, con, cur, person_date, False)
+    elif person_date[4] == 132:
+        await menu_132_get(update, context, con, cur, person_date, False)
 
 
 async def admin_contact_handler(update: Update, context: CallbackContext, con, cur, person_date):
