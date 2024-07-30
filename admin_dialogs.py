@@ -15,6 +15,7 @@ selected_template = {}
 selected_account = {}
 selected_admin_data = {}
 is_active_account = {}
+new_name_for_user = {}
 
 
 def change_tg_menu(tg_id, new_type, con, cur):
@@ -613,7 +614,6 @@ async def menu_122_take(update: Update, context: CallbackContext, con, cur, pers
     else:
         keyboard[0].append(InlineKeyboardButton('Написать', url=account[6]))
 
-
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.edit_message_text(text=text,
                                         chat_id=person_date[1],
@@ -828,10 +828,138 @@ async def menu_132_get(update: Update, context: CallbackContext, con, cur, perso
         print(f'Ошибка при изменении системных данных, запрос "{inquiry}".\n\nОшибка "{e}"')
         await update.message.reply_text(f'Произошла ошибка запроса изменения данных: {e}')
 
-
     await support_functions.delete_message(update, context, update.message.message_id)
     await menu_131_take(update, context, con, cur, person_date, last_admin_inlines[person_date[1]])
     change_tg_menu(person_date[1], 131, con, cur)
+
+
+# ===================================================================================================== Новый пациент
+
+
+async def menu_141_take(update: Update, context: CallbackContext, con, cur, person_date, message_id=None):
+    text = 'Введите как будут звать нового пациента'
+    keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data='close')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if message_id:
+        await context.bot.edit_message_text(text=text,
+                                            chat_id=person_date[1],
+                                            message_id=message_id,
+                                            reply_markup=reply_markup)
+        last_admin_inlines[person_date[1]] = message_id
+    else:
+        massage = await update.message.reply_text(text=text, reply_markup=reply_markup)
+        last_admin_inlines[person_date[1]] = massage.message_id
+
+
+async def menu_141_get(update: Update, context: CallbackContext, con, cur, person_date, is_inline=False):
+    if is_inline:
+        query = update.callback_query
+        await query.answer()
+
+        await support_functions.delete_message(update, context, last_admin_inlines[person_date[1]])
+        await menu_101_main_menu(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 101, con, cur)
+        return
+
+    answer = update.message.text
+    if answer.lower() == 'отмена' or answer.lower() == 'назад' or answer.lower() == 'стоп':
+        id = last_admin_inlines[person_date[1]]
+        await support_functions.delete_messages(update, context, [id, id + 1])
+        change_tg_menu(person_date[1], 101, con, cur)
+        await menu_101_main_menu(update, context, con, cur, person_date)
+        return
+
+    new_name_for_user[person_date[1]] = [update.message.text]
+
+    await menu_142_take(update, context, con, cur, person_date)
+    change_tg_menu(person_date[1], 142, con, cur)
+
+
+async def menu_142_take(update: Update, context: CallbackContext, con, cur, person_date):
+    text = 'Теперь укажите номер телефона в удобном формате без "+" в начале'
+    keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data='close')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.edit_message_text(text=text,
+                                        chat_id=person_date[1],
+                                        message_id=last_admin_inlines[person_date[1]],
+                                        reply_markup=reply_markup)
+
+
+async def menu_142_get(update: Update, context: CallbackContext, con, cur, person_date, is_inline=False):
+    if is_inline:
+        query = update.callback_query
+        await query.answer()
+
+        id = last_admin_inlines[person_date[1]]
+        await support_functions.delete_messages(update, context, [id, id + 1])
+        await menu_101_main_menu(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 101, con, cur)
+        return
+
+    answer = update.message.text
+    if answer.lower() == 'отмена' or answer.lower() == 'назад' or answer.lower() == 'стоп':
+        id = last_admin_inlines[person_date[1]]
+        await support_functions.delete_messages(update, context, [id, id + 1, id + 2])
+        change_tg_menu(person_date[1], 101, con, cur)
+        await menu_101_main_menu(update, context, con, cur, person_date)
+        return
+
+    new_name_for_user[person_date[1]].append(update.message.text)
+
+    await menu_143_take(update, context, con, cur, person_date)
+    change_tg_menu(person_date[1], 143, con, cur)
+
+
+async def menu_143_take(update: Update, context: CallbackContext, con, cur, person_date):
+    text = f'''Подтвердите введённые данные перед добавлением нового пациента:
+👤 {new_name_for_user[person_date[1]][0]}
+📞 +{new_name_for_user[person_date[1]][1]}
+'''
+    keyboard = [[InlineKeyboardButton("✅ Верно", callback_data='true'),
+                 InlineKeyboardButton("❌ Отмена", callback_data='close')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.edit_message_text(text=text,
+                                        chat_id=person_date[1],
+                                        message_id=last_admin_inlines[person_date[1]],
+                                        reply_markup=reply_markup)
+
+
+async def menu_143_get(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'true':
+        cur.execute(f'SELECT id FROM accounts ORDER BY id DESC LIMIT 1')
+        result = cur.fetchall()[0]
+        user_id = result[0] + 1
+
+        inquiry = f"""INSERT INTO accounts (id, tg_id, name, phone_number, tg_menu, number_requests, tg_link)
+        VALUES ({user_id}, {-1 * user_id}, '{new_name_for_user[person_date[1]][0]}', '{new_name_for_user[person_date[1]][1]}', 1, 0, 'None')"""
+        cur.execute(inquiry)
+        con.commit()
+        print(f'добавлен новый пользователь, id = {user_id}, name = {new_name_for_user[person_date[1]][0]}')
+        text = f'''Добавлен новый пациент:
+👤 {new_name_for_user[person_date[1]][0]}
+📞 +{new_name_for_user[person_date[1]][1]}
+'''
+        await context.bot.edit_message_text(text=text,
+                                            chat_id=person_date[1],
+                                            message_id=last_admin_inlines[person_date[1]])
+
+        id = last_admin_inlines[person_date[1]]
+        await support_functions.delete_messages(update, context, [id + 1, id + 2])
+        change_tg_menu(person_date[1], 101, con, cur)
+        await menu_101_main_menu(query, context, con, cur, person_date)
+
+    elif query.data == 'close':
+        id = last_admin_inlines[person_date[1]]
+        await support_functions.delete_messages(update, context, [id, id + 1, id + 2])
+        change_tg_menu(person_date[1], 101, con, cur)
+        await menu_101_main_menu(query, context, con, cur, person_date)
+        return
 
 
 # ====================================================================================================== Главное меню
@@ -839,7 +967,6 @@ async def menu_132_get(update: Update, context: CallbackContext, con, cur, perso
 async def menu_101_main_menu(update: Update, context: CallbackContext, con, cur, person_date):
     text = "Главное меню админа"
 
-    # TODO сделать возможность добавлять пользователей только по имени и номеру телефона
     # TODO сделать отдельный раздел для отмены дня или отмены записи или для открепления пациента от записи
     # TODO сделать отдельный раздел для записи ЛЮБОГО пользователя
 
@@ -884,6 +1011,12 @@ async def admin_button_handler(update: Update, context: CallbackContext, con, cu
         await menu_131_get(update, context, con, cur, person_date)
     elif person_date[4] == 132:
         await menu_132_get(update, context, con, cur, person_date, True)
+    elif person_date[4] == 141:
+        await menu_141_get(update, context, con, cur, person_date, True)
+    elif person_date[4] == 142:
+        await menu_142_get(update, context, con, cur, person_date, True)
+    elif person_date[4] == 143:
+        await menu_143_get(update, context, con, cur, person_date)
 
 
 async def admin_text_message_handler(update: Update, context: CallbackContext, con, cur, person_date):
@@ -906,6 +1039,9 @@ async def admin_text_message_handler(update: Update, context: CallbackContext, c
         elif update.message.text == 'Пациенты активные':
             await menu_121_take(update, context, con, cur, person_date, is_active=True)
             change_tg_menu(person_date[1], 121, con, cur)
+        elif update.message.text == 'Новый пациент':
+            await menu_141_take(update, context, con, cur, person_date)
+            change_tg_menu(person_date[1], 141, con, cur)
         else:
             await menu_101_main_menu(update, context, con, cur, person_date)
     elif person_date[4] == 104:
@@ -926,6 +1062,10 @@ async def admin_text_message_handler(update: Update, context: CallbackContext, c
         await menu_125_get(update, context, con, cur, person_date, False)
     elif person_date[4] == 132:
         await menu_132_get(update, context, con, cur, person_date, False)
+    elif person_date[4] == 141:
+        await menu_141_get(update, context, con, cur, person_date, False)
+    elif person_date[4] == 142:
+        await menu_142_get(update, context, con, cur, person_date, False)
 
 
 async def admin_contact_handler(update: Update, context: CallbackContext, con, cur, person_date):
