@@ -125,7 +125,7 @@ def get_active_accounts(cur):
 
 
 def get_timetable_by_user(cur, patient_id):
-    now = datetime.datetime.now()
+    now = datetime.datetime.now() - datetime.timedelta(days=1)
 
     cur.execute(f'''SELECT * FROM days ORDER BY id DESC LIMIT 31''')
     result = cur.fetchall()

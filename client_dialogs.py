@@ -343,7 +343,7 @@ async def menu_21_get(update: Update, context: CallbackContext, con, cur, person
             await menu_22_take(update, context, con, cur, person_date, query.message.message_id)
             change_tg_menu(person_date[1], 22, con, cur)
     else:
-        await menu_3_main_menu(update, context, con, cur, person_date)
+        await menu_3_main_menu(query, context, con, cur, person_date)
         change_tg_menu(person_date[1], 3, con, cur)
 
 
