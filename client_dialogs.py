@@ -463,7 +463,7 @@ async def menu_24_take(update: Update, context: CallbackContext, con, cur, perso
     cur.execute(f'''SELECT DISTINCT * FROM admin_data''')
     result = cur.fetchall()
     address = list(filter(lambda x: x[1] == 'address', result))[0][2]
-    name_specialist = list(filter(lambda x: x[1] == 'name', result))[0][2]
+    name_specialist = list(filter(lambda x: x[1] == 'master_name', result))[0][2]
 
     cur.execute(f'''SELECT DISTINCT records.time, days.date FROM records, days
                             WHERE days.id = records.day_id AND records.id = {selected_record[person_date[1]]} ''')
@@ -518,7 +518,7 @@ async def menu_31_take(update: Update, context: CallbackContext, con, cur, perso
     cur.execute(f'''SELECT DISTINCT * FROM admin_data''')
     result = cur.fetchall()
     address = list(filter(lambda x: x[1] == 'address', result))[0][2]
-    name_specialist = list(filter(lambda x: x[1] == 'name', result))[0][2]
+    name_specialist = list(filter(lambda x: x[1] == 'master_name', result))[0][2]
 
     temp = '\n'.join(records_text)
     text = f'Ваше ближайшее расписание {name_specialist} по адресу "{address}":\n{temp}'
@@ -737,6 +737,48 @@ async def menu_42_get(update: Update, context: CallbackContext, con, cur, person
     change_tg_menu(person_date[1], 41, con, cur)
 
 
+# =========================================================================================== Оповещения
+
+
+async def notification_get(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+    await query.answer()
+    if 'remeber_yes_' in query.data:
+        record_id = query.data.split('_')[-1]
+        inquiry = f"""UPDATE records
+        SET is_verification = 1
+        WHERE id = {record_id}"""
+        cur.execute(inquiry)
+        con.commit()
+        await context.bot.edit_message_text(text="Спасибо за ответ!",
+                                            chat_id=person_date[1],
+                                            message_id=query.message.message_id)
+        return True
+    elif 'remeber_no_' in query.data:
+        record_id = query.data.split('_')[-1]
+        inquiry = f"""UPDATE records
+        SET patient_id = NULL, is_verification = 0, is_reminder = 0, is_ended = 0
+            WHERE id = {record_id}"""
+        cur.execute(inquiry)
+        con.commit()
+
+        cur.execute(f'''SELECT DISTINCT records.time, days.date FROM records, days
+        WHERE days.id = records.day_id AND records.is_cancel = 0 AND records.id = {record_id}''')
+        result = cur.fetchall()[0]
+
+        text = f'Пользователь "{person_date[2]}" (+{person_date[3]}) не придёт завтра:\n'
+        date = datetime.datetime.strptime(result[1], '%d.%m.%Y')
+        week = telegram_calendar.week_days[date.weekday()]
+        text += f'📅 {date.strftime("%d.%m.%Y")} ({week}) ⏰ {result[0]}\nЗапись открыта.'
+        await context.bot.edit_message_text(text="Ничего страшного, запись отменена.",
+                                            chat_id=person_date[1],
+                                            message_id=query.message.message_id)
+
+        await spam_to_admins(context, text)
+        return True
+    return False
+
+
 # =========================================================================================== Главное меню
 
 
@@ -755,6 +797,8 @@ async def menu_3_main_menu(update: Update, context: CallbackContext, con, cur, p
 
 async def client_button_handler(update: Update, context: CallbackContext, con, cur, person_date):
     if await check_is_baned(update, context, con, cur, person_date):
+        return
+    if await notification_get(update, context, con, cur, person_date):
         return
     add_person_to_list(person_date[1])
     if person_date[4] == 11:

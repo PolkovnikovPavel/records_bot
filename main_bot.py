@@ -1,9 +1,14 @@
+import datetime
+import threading
+
+import support_functions
 from client_dialogs import client_button_handler, client_text_message_handler, client_contact_handler, menu_1_take
 from admin_dialogs import admin_button_handler, admin_text_message_handler, admin_contact_handler, check_is_admin, menu_100_welcome
 from support_functions import change_tg_menu
 from auth import *
 
 import sqlite3
+import asyncio
 import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
@@ -130,11 +135,57 @@ async def text_message_handler(update: Update, context: CallbackContext) -> None
     await client_text_message_handler(update, context, con, cur, person_date)
 
 
+async def send_message(application, text, chat_id, reply_markup=None):
+    await application.bot.send_message(text=text, chat_id=chat_id, reply_markup=reply_markup)
+
+
+def spam_every_30_minutes(application: Application, loop: asyncio.AbstractEventLoop):
+    con = sqlite3.connect('data/db.db')
+    cur = con.cursor()
+    while True:
+        # Ваши периодические действия здесь
+        now = datetime.datetime.now()
+        if now.hour == 10 or now.hour == 11 or now.hour == 12:
+            cur.execute(f'''SELECT DISTINCT * FROM admin_data''')
+            result = cur.fetchall()
+            address = list(filter(lambda x: x[1] == 'address', result))[0][2]
+            name_specialist = list(filter(lambda x: x[1] == 'name', result))[0][2]
+
+            records_for_reminder = support_functions.get_records_for_reminder(cur)
+            for record in records_for_reminder:
+                if record[3] > 0:
+                    print(f'Отправлено уведомление {record}')
+                    text = f'Вы записаны {name_specialist}\nзавтра (📅 {record[2]}) ⏰ {record[1]}\nПо адресу 🗺️ {address}\nВы придёте?'
+                    keyboard = [[InlineKeyboardButton("✅ Да приду", callback_data=f'remeber_yes_{record[0]}')],
+                                 [InlineKeyboardButton("❌ Нет, отменить запись", callback_data=f'remeber_no_{record[0]}')]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    asyncio.run_coroutine_threadsafe(
+                        send_message(application, text, record[3], reply_markup),
+                        loop
+                    )
+                    inquiry = f"""UPDATE records
+                    SET is_reminder = 1
+                    WHERE id = {record[0]}"""
+                    cur.execute(inquiry)
+                    con.commit()
+
+        threading.Event().wait(900)   # 15 минут
+
+
+async def start_post_init(application):
+    await application.bot.send_message(text='bot started', chat_id=admins[0])
+    # Передаем текущий событийный цикл
+    loop = asyncio.get_running_loop()
+    independent_thread = threading.Thread(target=spam_every_30_minutes, args=(application, loop, ))
+    independent_thread.start()
+    print('bot')
+
+
 def main():
     # Создание подключения к базе данных
     create_con()
 
-    application = Application.builder().token(token).build()
+    application = Application.builder().token(token).post_init(start_post_init).build()
 
     # Регистрируем обработчик команды /start
     application.add_handler(CommandHandler("start", start))
