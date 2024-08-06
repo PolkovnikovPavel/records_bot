@@ -1,52 +1,40 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
-from auth import token
+import asyncio
+import threading
+import sqlite3
+from telegram import Update
+from telegram.ext import Application, CommandHandler, CallbackContext
+from auth import *
 
 
-# Обработчик команды /start
-async def start(update: Update, context: CallbackContext) -> None:
-    # Текст сообщения
-    text = "Нажмите на кнопку ниже:"
-
-    # Определяем инлайн-кнопки
-    inline_keyboard = [
-        [InlineKeyboardButton("Показать уведомление", callback_data='show_alert')],
-        [InlineKeyboardButton("Показать сообщение", callback_data='show_message')]
-    ]
-
-    # Создаем инлайн-клавиатуру
-    inline_reply_markup = InlineKeyboardMarkup(inline_keyboard)
-
-    # Отправляем сообщение с инлайн-кнопками
-    await update.message.reply_text(text, reply_markup=inline_reply_markup)
+# Асинхронная функция для отправки сообщения
+async def send_message(application, text, chat_id, reply_markup=None):
+    await application.bot.send_message(text=text, chat_id=chat_id, reply_markup=reply_markup)
 
 
-# Обработчик нажатия инлайн-кнопок
-async def button_handler(update: Update, context: CallbackContext) -> None:
-    query = update.callback_query
-    await query.answer()
+# Функция для выполнения периодической рассылки
+def spam_every_30_minutes(application: Application, loop: asyncio.AbstractEventLoop):
+    con = sqlite3.connect('data/db.db')
+    cur = con.cursor()
+    while True:
+        for i in range(5):
+            # Используем run_coroutine_threadsafe для безопасного выполнения асинхронной функции из другого потока
+            asyncio.run_coroutine_threadsafe(
+                send_message(application, str(i), admins[0]),
+                loop
+            )
+            threading.Event().wait(1)
+        threading.Event().wait(5)
 
-    if query.data == 'show_alert':
-        # Отправляем всплывающее уведомление (alert)
-        await query.answer(text="Это всплывающее уведомление!", show_alert=True)
-    elif query.data == 'show_message':
-        # Отправляем сообщение в чат
-        await query.edit_message_text(text="Вы нажали кнопку показать сообщение.")
 
-
-def main() -> None:
-    # Создаем Application и передаем ему токен вашего бота.
-    application = Application.builder().token(token).build()
-
-    # Регистрируем обработчик команды /start
-    application.add_handler(CommandHandler("start", start))
-
-    # Регистрируем обработчик нажатия инлайн-кнопок
-    application.add_handler(CallbackQueryHandler(button_handler))
-
-    # Запускаем бота
-    application.run_polling()
-
+async def start_post_init(application):
+    await application.bot.send_message(text='bot started', chat_id=admins[0])
+    # Передаем текущий событийный цикл
+    loop = asyncio.get_running_loop()
+    independent_thread = threading.Thread(target=spam_every_30_minutes, args=(application, loop))
+    independent_thread.start()
+    print('bot')
 
 if __name__ == '__main__':
-    main()
+    # Настройка и запуск бота
+    application = Application.builder().token(token).post_init(start_post_init).build()
+    application.run_polling()

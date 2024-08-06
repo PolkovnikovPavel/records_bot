@@ -23,8 +23,6 @@ is_admin_menu = {}
 for id in admins:
     is_admin_menu[id] = True
 
-# TODO сделать прерывание на каждые пол часа, которое будет отвечать за рассылку (оповещения, опросы)
-
 
 def create_con():
     global con, cur, timer_con
@@ -145,11 +143,11 @@ def spam_every_30_minutes(application: Application, loop: asyncio.AbstractEventL
     while True:
         # Ваши периодические действия здесь
         now = datetime.datetime.now()
-        if now.hour == 10 or now.hour == 11 or now.hour == 12:
+        if now.hour == 10 or now.hour == 11 or now.hour == 12 or now.hour == 22:
             cur.execute(f'''SELECT DISTINCT * FROM admin_data''')
             result = cur.fetchall()
             address = list(filter(lambda x: x[1] == 'address', result))[0][2]
-            name_specialist = list(filter(lambda x: x[1] == 'name', result))[0][2]
+            name_specialist = list(filter(lambda x: x[1] == 'master_name', result))[0][2]
 
             records_for_reminder = support_functions.get_records_for_reminder(cur)
             for record in records_for_reminder:
