@@ -120,10 +120,13 @@ def get_clients_first_ignored_and_last_days(cur, user_id):
                 else:
                     ignored_days.append((data, '📌', False))
                 continue
-            if any(map(lambda x: x[0] == user_id, records)):
-                ignored_days.append((data, '◉', True))
+            if records:
+                if any(map(lambda x: x[0] == user_id, records)):
+                    ignored_days.append((data, '◉', True))
+                else:
+                    ignored_days.append((data, '⭘', True))
             else:
-                ignored_days.append((data, '⭘', True))
+                ignored_days.append((data, '', False))
         else:
             ignored_days.append((data, '', False))
     return first_day, ignored_days, last_day

@@ -1310,7 +1310,10 @@ async def menu_161_take(update: Update, context: CallbackContext, con, cur, pers
     other_id = other_id - simple_id - active_id
     users = []
     for ids in [active_id, simple_id, other_id]:
+        if len(ids) == 0:
+            continue
         inquiry = ' OR '.join(list(map(lambda x: f'id = {x}', ids)))
+        print(f'SELECT name, phone_number, id FROM accounts WHERE {inquiry}')
         cur.execute(f'SELECT name, phone_number, id FROM accounts WHERE {inquiry}')
         result = cur.fetchall()
         result.sort(key=lambda x: x[0])
@@ -1526,7 +1529,57 @@ async def menu_165_get(update: Update, context: CallbackContext, con, cur, perso
         change_tg_menu(person_date[1], 162, con, cur)
 
 
+# ====================================================================================================== Рассылка
+
+
+async def menu_181_take(update: Update, context: CallbackContext, con, cur, person_date):
+    text = 'Введите сообщение для рассылке ВСЕМ активным клиентам:'
+    keyboard = [[InlineKeyboardButton("❌ Назад", callback_data='back')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    massage = await update.message.reply_text(text=text, reply_markup=reply_markup)
+    last_admin_inlines[person_date[1]] = massage.message_id
+
+
+async def menu_181_get(update: Update, context: CallbackContext, con, cur, person_date, is_inline=False):
+    if is_inline:
+        query = update.callback_query
+        await query.answer()
+
+        await support_functions.delete_message(update, context, last_admin_inlines[person_date[1]])
+        await menu_101_main_menu(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 101, con, cur)
+        return
+
+    answer = update.message.text
+    if answer.lower() == 'отмена' or answer.lower() == 'назад' or answer.lower() == 'стоп':
+        await support_functions.delete_message(update, context, last_admin_inlines[person_date[1]])
+        await menu_101_main_menu(update, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 101, con, cur)
+        return
+
+    active_id = support_functions.get_active_accounts(cur)
+    inquiry = []
+    for id in active_id:
+        inquiry.append(f'id = {id}')
+    inquiry = 'SELECT * FROM accounts WHERE is_deleted = 0 AND (' + ' OR '.join(inquiry) + ')'
+    cur.execute(inquiry)
+    result = cur.fetchall()
+    for account in result:
+        await spam_to_user(context, answer, account[1])
+
+    text = f'Сообщение "{answer}"\nУспешно доставлено до {len(result)} пользователей'
+    await support_functions.delete_message(update, context, last_admin_inlines[person_date[1]] + 1)
+
+    await context.bot.edit_message_text(text=text,
+                                        chat_id=person_date[1],
+                                        message_id=last_admin_inlines[person_date[1]])
+    await menu_101_main_menu(update, context, con, cur, person_date)
+    change_tg_menu(person_date[1], 101, con, cur)
+
+
 # ====================================================================================================== Главное меню
+
 
 async def menu_101_main_menu(update: Update, context: CallbackContext, con, cur, person_date):
     text = "Главное меню админа"
@@ -1536,7 +1589,7 @@ async def menu_101_main_menu(update: Update, context: CallbackContext, con, cur,
         ['📅 расписание'],
         ["Шаблоны", "Отмены", 'Запись'],
         ['Пациенты активные', 'Все пациенты', 'Новый пациент'],
-        ['Системная информация']
+        ['Системная информация', 'Рассылка']
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text(text, reply_markup=reply_markup)
@@ -1601,6 +1654,8 @@ async def admin_button_handler(update: Update, context: CallbackContext, con, cu
         await menu_164_get(update, context, con, cur, person_date)
     elif person_date[4] == 165:
         await menu_165_get(update, context, con, cur, person_date)
+    elif person_date[4] == 181:
+        await menu_181_get(update, context, con, cur, person_date, True)
 
 
 
@@ -1635,6 +1690,9 @@ async def admin_text_message_handler(update: Update, context: CallbackContext, c
             change_tg_menu(person_date[1], 161, con, cur)
         elif update.message.text == '📅 расписание':
             await menu_171_take(update, context, con, cur, person_date)
+        elif update.message.text == 'Рассылка':
+            await menu_181_take(update, context, con, cur, person_date)
+            change_tg_menu(person_date[1], 181, con, cur)
         else:
             await menu_101_main_menu(update, context, con, cur, person_date)
     elif person_date[4] == 104:
@@ -1659,6 +1717,8 @@ async def admin_text_message_handler(update: Update, context: CallbackContext, c
         await menu_141_get(update, context, con, cur, person_date, False)
     elif person_date[4] == 142:
         await menu_142_get(update, context, con, cur, person_date, False)
+    elif person_date[4] == 181:
+        await menu_181_get(update, context, con, cur, person_date, False)
 
 
 async def admin_contact_handler(update: Update, context: CallbackContext, con, cur, person_date):

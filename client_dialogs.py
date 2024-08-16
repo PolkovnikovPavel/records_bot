@@ -316,7 +316,7 @@ async def menu_21_take(update: Update, context: CallbackContext, con, cur, perso
 
     calendar_data[person_date[1]] = [first_day, ignored_days, last_day, now]
 
-    await update.message.reply_text(text='Календарь',
+    await update.message.reply_text(text='Календарь:\n⭘ - есть свободное время\n◉ - есть запись',
                                     reply_markup=telegram_calendar.create_calendar(first_day=first_day,
                                                                                    ignored_days=ignored_days,
                                                                                    last_day=last_day))
