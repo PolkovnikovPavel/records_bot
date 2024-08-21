@@ -296,13 +296,15 @@ async def menu_13_get(update: Update, context: CallbackContext, con, cur, person
 
 
 async def menu_14_take(update: Update, context: CallbackContext, con, cur, person_date):
-    text = "Просмотреть расписание целиком и в красивом оформление можно по ссылке"
-    keyboard = [
-        [InlineKeyboardButton("Общее расписание ", url='https://github.com/PolkovnikovPavel')]
-    ]
+    # text = "Просмотреть расписание целиком и в красивом оформление можно по ссылке"
+    # keyboard = [
+    #     [InlineKeyboardButton("Общее расписание ", url='https://github.com/PolkovnikovPavel')]
+    # ]
+    text = 'В разработке 🛠️'
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(text, reply_markup=reply_markup)
+    # reply_markup = InlineKeyboardMarkup(keyboard)
+    # await update.message.reply_text(text, reply_markup=reply_markup)
+    await update.message.reply_text(text)
 
     change_tg_menu(person_date[1], 3, con, cur)
     await menu_3_main_menu(update, context, con, cur, person_date)
@@ -354,7 +356,7 @@ async def menu_22_take(update: Update, context: CallbackContext, con, cur, perso
         date = datetime.datetime(int(year), int(month), int(day))
         calendar_data[person_date[1]][3] = date
 
-    text = f"Расписание на {date.strftime('%d.%m.%Y')} ({telegram_calendar.week_days[date.weekday()]})"
+    text = f"Выберите свободное время на {date.strftime('%d.%m.%Y')} ({telegram_calendar.week_days[date.weekday()]})"
 
     cur.execute(f'''SELECT DISTINCT * FROM days
             WHERE date = "{date.strftime('%d.%m.%Y')}"''')
@@ -524,7 +526,7 @@ async def menu_31_take(update: Update, context: CallbackContext, con, cur, perso
     text = f'Ваше ближайшее расписание {name_specialist} по адресу "{address}":\n{temp}'
     keyboard = [
         [InlineKeyboardButton(f"Отменить запись", callback_data=f'cancel_recording'),
-         InlineKeyboardButton(f"Готово", callback_data=f'exit')]
+         InlineKeyboardButton(f"В меню", callback_data=f'exit')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
