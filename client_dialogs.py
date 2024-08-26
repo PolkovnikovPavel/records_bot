@@ -791,7 +791,7 @@ async def menu_3_main_menu(update: Update, context: CallbackContext, con, cur, p
         ['Записаться на приём'],
         ['Моё расписание'],
         ['Общее расписание', 'Мои жалобы'],
-        ['Обновить контактную информацию']
+        ['🏠', 'Обновить контактную информацию']
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text(text, reply_markup=reply_markup)
@@ -833,9 +833,14 @@ async def client_text_message_handler(update: Update, context: CallbackContext, 
     add_person_to_list(person_date[1])
     if person_date[4] == 1:
         await menu_1_get(update, context, con, cur, person_date)
-    if person_date[4] == 2:
+    elif person_date[4] == 2:
         await menu_2_get(update, context, con, cur, person_date)
-    elif person_date[4] == 3:   # Главное меню
+    else:
+        if update.message.text == '🏠':
+            change_tg_menu(person_date[1], 3, con, cur)
+            await menu_3_main_menu(update, context, con, cur, person_date)
+            return
+    if person_date[4] == 3:   # Главное меню
         if update.message.text == 'Обновить контактную информацию':
             await menu_11_take(update, context, con, cur, person_date)
             change_tg_menu(person_date[1], 11, con, cur)
