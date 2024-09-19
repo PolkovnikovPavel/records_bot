@@ -43,9 +43,9 @@ async def delete_messages(update, context, to_del_messages):
 def get_first_ignored_and_last_days(cur):
     now = datetime.datetime.now()
     first_day = datetime.datetime(now.year, now.month, now.day)
-    last_day = first_day + datetime.timedelta(days=31)
+    last_day = first_day + datetime.timedelta(days=90)
 
-    cur.execute(f'''SELECT * FROM days ORDER BY id DESC LIMIT 31''')
+    cur.execute(f'''SELECT * FROM days ORDER BY id DESC LIMIT 90''')
     result = cur.fetchall()
     ignored_days = []
     for i in range(len(result)):
@@ -69,9 +69,9 @@ def get_first_ignored_and_last_days(cur):
 def get_first_ignored_and_last_days_for_canceled(cur):
     now = datetime.datetime.now()
     first_day = datetime.datetime(now.year, now.month, now.day)
-    last_day = first_day + datetime.timedelta(days=31)
+    last_day = first_day + datetime.timedelta(days=90)
 
-    cur.execute(f'''SELECT * FROM days ORDER BY id DESC LIMIT 31''')
+    cur.execute(f'''SELECT * FROM days ORDER BY id DESC LIMIT 90''')
     result = cur.fetchall()
     ignored_days = []
     for i in range(len(result)):
@@ -95,9 +95,9 @@ def get_first_ignored_and_last_days_for_canceled(cur):
 def get_clients_first_ignored_and_last_days(cur, user_id):
     now = datetime.datetime.now()
     first_day = datetime.datetime(now.year, now.month, now.day)
-    last_day = first_day + datetime.timedelta(days=31)
+    last_day = first_day + datetime.timedelta(days=90)
 
-    cur.execute(f'''SELECT * FROM days ORDER BY id DESC LIMIT 31''')
+    cur.execute(f'''SELECT * FROM days ORDER BY id DESC LIMIT 90''')
     result = cur.fetchall()
 
     data_date = []

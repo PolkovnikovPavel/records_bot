@@ -75,6 +75,7 @@ def get_data_of_person(message):
 async def start(update: Update, context: CallbackContext) -> None:
     check_timer_con()
     person_date = get_data_of_person(update.message)
+    print(person_date, check_is_admin(person_date))
     if check_is_admin(person_date):
         if is_admin_menu[person_date[1]]:
             await menu_100_welcome(update, context, con, cur, person_date)

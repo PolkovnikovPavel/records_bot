@@ -122,7 +122,7 @@ async def process_calendar_selection(update, context, first_day: datetime=None, 
     return ret_data
 
 
-async def redraw_calendar(update, context, month, year, first_day: datetime=None, ignored_days=[], last_day: datetime=None, chat_id=None, message_id=None, text='Календарь'):
+async def redraw_calendar(update, context, month, year, first_day: datetime=None, ignored_days=[], last_day: datetime=None, chat_id=None, message_id=None, text='Календарь:\n⭘ - есть свободное время\n◉ - есть запись'):
     if chat_id is None or message_id is None:
         query = update.callback_query
         await context.bot.edit_message_text(text=text,
