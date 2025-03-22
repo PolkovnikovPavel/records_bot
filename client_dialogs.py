@@ -739,6 +739,39 @@ async def menu_42_get(update: Update, context: CallbackContext, con, cur, person
     change_tg_menu(person_date[1], 41, con, cur)
 
 
+# =========================================================================================== Очередь
+
+
+async def menu_51_take(update: Update, context: CallbackContext, con, cur, person_date):
+    text = f"Тут должно формироваться динамическое сообщение с помощью f-строки c отображением информации об очереди из БД"
+
+    keyboard = [
+        [InlineKeyboardButton("Назад", callback_data='back')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.edit_message_text(text=text,
+                                        chat_id=person_date[1],
+                                        reply_markup=reply_markup,
+                                        message_id=last_inlines[person_date[1]])
+
+
+async def menu_51_get(update: Update, context: CallbackContext, con, cur, person_date, is_inline=False):
+    if is_inline:
+        pass
+        change_tg_menu(person_date[1], 3, con, cur)
+        await menu_3_main_menu(update, context, con, cur, person_date)
+        return
+    answer = update.message.text
+
+    if answer.lower() == 'отмена' or answer.lower() == 'назад' or answer.lower() == 'стоп':
+        change_tg_menu(person_date[1], 3, con, cur)
+        await menu_3_main_menu(update, context, con, cur, person_date)
+        return
+
+    change_tg_menu(person_date[1], 3, con, cur)
+    await menu_3_main_menu(update, context, con, cur, person_date)
+
+
 # =========================================================================================== Оповещения
 
 
@@ -790,7 +823,7 @@ async def menu_3_main_menu(update: Update, context: CallbackContext, con, cur, p
     keyboard = [
         ['Записаться на приём'],
         ['Моё расписание'],
-        ['Общее расписание', 'Мои жалобы'],
+        ['🕒 Очередь', 'Мои жалобы'],
         ['🏠', 'Обновить контактную информацию']
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)

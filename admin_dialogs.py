@@ -1,6 +1,9 @@
 from auth import token, admins
+
+from tabulate import tabulate
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
+
 import time
 import sqlite3
 import datetime
@@ -1578,6 +1581,108 @@ async def menu_181_get(update: Update, context: CallbackContext, con, cur, perso
     change_tg_menu(person_date[1], 101, con, cur)
 
 
+# ====================================================================================================== Меню Статистики
+
+async def menu_191_take(update: Update, context: CallbackContext, con, cur, person_date, message_id=None):
+    text = f"Чтобы сгенерировать команду для запуска можно воспользоваться deepseek https://chat.deepseek.com/\n\nНо перед этим сгенерируйте промт и вставьте вместо <...> свой запрос"
+
+    keyboard = [
+        [InlineKeyboardButton("получить промт", callback_data='get_promt'), InlineKeyboardButton("выполнить команду", callback_data='run_command')],
+        [InlineKeyboardButton("Назад", callback_data='back')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if message_id is not None:
+        await context.bot.edit_message_text(text=text,
+                                            chat_id=person_date[1],
+                                            reply_markup=InlineKeyboardMarkup([]),
+                                            message_id=message_id)
+    else:
+        massage = await update.message.reply_text(text=text, reply_markup=reply_markup)
+        last_admin_inlines[person_date[1]] = massage.message_id
+
+
+async def menu_191_get(update: Update, context: CallbackContext, con, cur, person_date):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'get_promt':
+        structure_description = support_functions.get_database_structure(cur)
+        text = f'Напиши SLQ Lite запрос для <...>\n{structure_description}'
+
+        await query.message.reply_text(text)
+        return
+    elif query.data == 'run_command':
+        await menu_191_take(query, context, con, cur, person_date, message_id=last_admin_inlines[person_date[1]])
+        await menu_192_take(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 192, con, cur)
+        return
+    elif query.data == 'back':
+        await menu_191_take(query, context, con, cur, person_date, message_id=last_admin_inlines[person_date[1]])
+        await menu_101_main_menu(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 101, con, cur)
+        return
+
+
+async def menu_192_take(update: Update, context: CallbackContext, con, cur, person_date):
+    text = f"Введите sql запрос для выполнения его:"
+
+    keyboard = [
+        [InlineKeyboardButton("Отмена", callback_data='back')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    massage = await update.message.reply_text(text=text, reply_markup=reply_markup)
+    last_admin_inlines[person_date[1]] = massage.message_id
+
+
+async def menu_192_get(update: Update, context: CallbackContext, con, cur, person_date, is_inline=False):
+    if is_inline:
+        query = update.callback_query
+        await query.answer()
+
+        await support_functions.delete_message(update, context, last_admin_inlines[person_date[1]])
+        await menu_101_main_menu(query, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 101, con, cur)
+        return
+
+    answer = update.message.text
+
+    if answer.lower() == 'отмена' or answer.lower() == 'назад' or answer.lower() == 'стоп':
+        await menu_101_main_menu(update, context, con, cur, person_date)
+        change_tg_menu(person_date[1], 101, con, cur)
+        return
+
+    temp_cur = support_functions.get_cur('ro')
+    try:
+        temp_cur.execute(answer)
+        result = temp_cur.fetchall()  # Получаем все строки результата
+        headers = [description[0] for description in cur.description]  # Заголовки столбцов
+
+        # Преобразуем Unicode-последовательности в читаемый текст
+        e = '\n'
+        result = [
+            [f'{cell.replace(e, "")}' if isinstance(cell, str) else cell for cell in row]
+            for row in result
+        ]
+        headers = [f'{header}' if isinstance(header, str) else header for header in headers]
+
+        # Форматируем таблицу с ограничением ширины столбцов
+        formatted_table = tabulate(
+            result,
+            headers=headers,
+            tablefmt="mixed_outline" # Ограничение ширины столбцов
+        )
+
+    except sqlite3.Error as e:
+        formatted_table = f"Ошибка выполнения SQL-запроса: {e}"
+
+    print(f'SQL: {answer}\n=============\nResult: {result}')
+    await support_functions.delete_message(update, context, last_admin_inlines[person_date[1]])
+    await update.message.reply_text(text=formatted_table[1:])   # первый символ - всегда пробел
+    await menu_191_take(update, context, con, cur, person_date)
+    change_tg_menu(person_date[1], 191, con, cur)
+
+
 # ====================================================================================================== Главное меню
 
 
@@ -1586,7 +1691,7 @@ async def menu_101_main_menu(update: Update, context: CallbackContext, con, cur,
 
     keyboard = [
         ['Добавить расписание'],
-        ['📅 расписание'],
+        ['📅 расписание', '📊 Статистика'],
         ["Шаблоны", "Отмены", 'Запись'],
         ['Пациенты активные', 'Все пациенты', 'Новый пациент'],
         ['Системная информация', 'Рассылка']
@@ -1656,6 +1761,10 @@ async def admin_button_handler(update: Update, context: CallbackContext, con, cu
         await menu_165_get(update, context, con, cur, person_date)
     elif person_date[4] == 181:
         await menu_181_get(update, context, con, cur, person_date, True)
+    elif person_date[4] == 191:
+        await menu_191_get(update, context, con, cur, person_date)
+    elif person_date[4] == 192:
+        await menu_192_get(update, context, con, cur, person_date, True)
 
 
 
@@ -1693,6 +1802,9 @@ async def admin_text_message_handler(update: Update, context: CallbackContext, c
         elif update.message.text == 'Рассылка':
             await menu_181_take(update, context, con, cur, person_date)
             change_tg_menu(person_date[1], 181, con, cur)
+        elif update.message.text == '📊 Статистика':
+            await menu_191_take(update, context, con, cur, person_date)
+            change_tg_menu(person_date[1], 191, con, cur)
         else:
             await menu_101_main_menu(update, context, con, cur, person_date)
     elif person_date[4] == 104:
@@ -1719,6 +1831,8 @@ async def admin_text_message_handler(update: Update, context: CallbackContext, c
         await menu_142_get(update, context, con, cur, person_date, False)
     elif person_date[4] == 181:
         await menu_181_get(update, context, con, cur, person_date, False)
+    elif person_date[4] == 192:
+        await menu_192_get(update, context, con, cur, person_date, False)
 
 
 async def admin_contact_handler(update: Update, context: CallbackContext, con, cur, person_date):

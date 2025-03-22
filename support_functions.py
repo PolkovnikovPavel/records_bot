@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import datetime
 
 
@@ -205,6 +206,56 @@ def get_records_for_reminder(cur):
     WHERE records.patient_id = accounts.id AND days.date = "{now.strftime("%d.%m.%Y")}" AND records.day_id = days.id AND records.is_cancel = 0 AND records.is_reminder = 0''')
     result = cur.fetchall()
     return result
+
+
+def get_database_structure(cur):
+    # Создаем строку для хранения описания
+    description = "Описание структуры базы данных:\n"
+
+    # Получаем список всех таблиц
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = list(filter(lambda x: x[0] != 'sqlite_sequence', cur.fetchall()))
+
+    for table in tables:
+        table_name = table[0]
+        description += f"Таблица: {table_name}\n"
+
+        # Получаем информацию о столбцах таблицы
+        cur.execute(f"PRAGMA table_info({table_name});")
+        columns = cur.fetchall()
+        description += "  Столбцы:\n"
+        for column in columns:
+            column_name = column[1]
+            column_type = column[2]
+            column_notnull = "NOT NULL" if column[3] else "NULL"
+            column_pk = "PRIMARY KEY" if column[5] else ""
+            description += f"    - {column_name}: {column_type} {column_notnull} {column_pk}\n"
+
+        # Получаем информацию о внешних ключах таблицы
+        cur.execute(f"PRAGMA foreign_key_list({table_name});")
+        foreign_keys = cur.fetchall()
+        if foreign_keys:
+            description += "  Внешние ключи:\n"
+            for fk in foreign_keys:
+                fk_from = fk[3]
+                fk_to_table = fk[2]
+                fk_to_column = fk[4]
+                description += f"    - {fk_from} -> {fk_to_table}.{fk_to_column}\n"
+
+        description += "\n"
+    # Ручные пояснения к структуре БД
+    return f"{description}Формат даты: DD.MM.YYYY\nПоле records.is_ended временно всегда равен 0"
+
+
+def get_cur(mode: str='rw'):
+    """
+    Возвращает курсор к БД в выбранном режиме
+    :param mode: ro (Read-Only), rw (Read-Write), rwc (Read-Write-Create) or memory
+    :return:
+    """
+    con = sqlite3.connect(f"file:data/db.db?mode={mode}", uri=True)
+    return con.cursor()
+
 
 
 if __name__ == '__main__':

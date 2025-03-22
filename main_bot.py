@@ -13,6 +13,7 @@ import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 
+version = '1.1.0'
 con = sqlite3.connect('data/db.db')
 cur = con.cursor()
 timer_con = time.time()
@@ -172,7 +173,8 @@ def spam_every_30_minutes(application: Application, loop: asyncio.AbstractEventL
 
 
 async def start_post_init(application):
-    await application.bot.send_message(text='bot started', chat_id=admins[0])
+    for admin in admins:
+        await application.bot.send_message(text=f'bot started with version=={version}\nto start /start', chat_id=admin)
     # Передаем текущий событийный цикл
     loop = asyncio.get_running_loop()
     independent_thread = threading.Thread(target=spam_every_30_minutes, args=(application, loop, ))
