@@ -13,7 +13,7 @@ import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 
-version = '1.1.0'
+version = '1.1.1'
 con = sqlite3.connect('data/db.db')
 cur = con.cursor()
 timer_con = time.time()

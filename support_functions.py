@@ -244,7 +244,11 @@ def get_database_structure(cur):
 
         description += "\n"
     # Ручные пояснения к структуре БД
-    return f"{description}Формат даты: DD.MM.YYYY\nПоле records.is_ended временно всегда равен 0"
+    return f"""{description}Формат даты: DD.MM.YYYY (для определения даты использовать substr вместо strftime)
+Поле records.is_ended временно всегда равен 0
+Поле records.is_cancel отвечает за отмену записи (1 - отменена, 0 - всё хорошо)
+Поле records.is_reminder говорит было ли напоминание клиенту о записи
+"""
 
 
 def get_cur(mode: str='rw'):

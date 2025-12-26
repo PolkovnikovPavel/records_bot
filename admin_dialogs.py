@@ -1,3 +1,5 @@
+import telegram.error
+
 from auth import token, admins
 
 from tabulate import tabulate
@@ -1653,6 +1655,7 @@ async def menu_192_get(update: Update, context: CallbackContext, con, cur, perso
         return
 
     temp_cur = support_functions.get_cur('ro')
+    result = 'error'
     try:
         temp_cur.execute(answer)
         result = temp_cur.fetchall()  # Получаем все строки результата
@@ -1674,11 +1677,18 @@ async def menu_192_get(update: Update, context: CallbackContext, con, cur, perso
         )
 
     except sqlite3.Error as e:
-        formatted_table = f"Ошибка выполнения SQL-запроса: {e}"
+        formatted_table = f" Ошибка выполнения SQL-запроса: {e}"
 
     print(f'SQL: {answer}\n=============\nResult: {result}')
-    await support_functions.delete_message(update, context, last_admin_inlines[person_date[1]])
-    await update.message.reply_text(text=formatted_table[1:])   # первый символ - всегда пробел
+    if person_date[1] in last_admin_inlines:
+        await support_functions.delete_message(update, context, last_admin_inlines[person_date[1]])
+    try:
+        await update.message.reply_text(text=formatted_table[1:])   # первый символ - всегда пробел
+    except telegram.error.BadRequest as e:
+        try:
+            await update.message.reply_text(text=f'Ответ слишком большой, пришлось сократить его:\n\n{result}')
+        except telegram.error.BadRequest as e:
+            await update.message.reply_text(text=e.message)
     await menu_191_take(update, context, con, cur, person_date)
     change_tg_menu(person_date[1], 191, con, cur)
 
