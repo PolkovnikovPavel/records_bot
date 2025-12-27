@@ -1,0 +1,13 @@
+services:
+  record_bot:
+    image: setorg/record_bot:latest
+    container_name: record_bot
+    build: .
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Novosibirsk
+    volumes:
+      - ./logs:/logs
+      - ./data:/data

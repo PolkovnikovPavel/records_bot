@@ -1,11 +1,11 @@
 import datetime
 import threading
+import os
 
 import support_functions
 from client_dialogs import client_button_handler, client_text_message_handler, client_contact_handler, menu_1_take
 from admin_dialogs import admin_button_handler, admin_text_message_handler, admin_contact_handler, check_is_admin, menu_100_welcome
 from support_functions import change_tg_menu
-from auth import *
 
 import sqlite3
 import asyncio
@@ -19,6 +19,10 @@ cur = con.cursor()
 timer_con = time.time()
 last_inlines = {}
 to_del_message = {}
+
+token = os.getenv("BOT_TOKEN", "")
+admins_id = os.getenv("ADMINS_ID", "")
+admins = list(map(int, admins_id.split(";")))
 
 is_admin_menu = {}
 for id in admins:

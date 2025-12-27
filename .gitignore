@@ -1,4 +1,5 @@
 /auth.py
 /data
 /.idea
-/server.tlp
+/*.tlp
+/.env
