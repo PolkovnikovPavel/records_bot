@@ -9,5 +9,5 @@ services:
     environment:
       - TZ=Asia/Novosibirsk
     volumes:
-      - ./logs:/logs
-      - ./data:/data
+      - ./logs:/app/logs
+      - ./data:/app/data

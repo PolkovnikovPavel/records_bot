@@ -1,4 +1,5 @@
 import datetime
+import logging
 import threading
 import os
 
@@ -6,14 +7,24 @@ import support_functions
 from client_dialogs import client_button_handler, client_text_message_handler, client_contact_handler, menu_1_take
 from admin_dialogs import admin_button_handler, admin_text_message_handler, admin_contact_handler, check_is_admin, menu_100_welcome
 from support_functions import change_tg_menu
+from conf_logs import configure_logging
 
 import sqlite3
 import asyncio
 import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
+from logging.handlers import RotatingFileHandler
 
-version = '1.1.1'
+
+# Настройка логирования
+configure_logging()
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
+version = '1.2.1'
 con = sqlite3.connect('data/db.db')
 cur = con.cursor()
 timer_con = time.time()
@@ -32,7 +43,7 @@ for id in admins:
 def create_con():
     global con, cur, timer_con
     text = f'Срок действия курсора вышел ({int(time.time() - timer_con)}сек.)'
-    print(text)
+    logger.info(text)
 
     con = sqlite3.connect('data/db.db')
     cur = con.cursor()
@@ -60,7 +71,7 @@ def create_user(message, mod=False):
 VALUES ({message.chat_id}, '{message.from_user.full_name}', '{message.from_user.link}', 1, 0, '{message.from_user.link}')"""
         cur.execute(inquiry)
         con.commit()
-        print(f'добавлен новый пользователь, id = {message.chat_id}, name = {message.from_user.full_name}')
+        logger.info(f'добавлен новый пользователь, id = {message.chat_id}, name = {message.from_user.full_name}')
 
 
 def get_data_of_person(message):
@@ -80,7 +91,7 @@ def get_data_of_person(message):
 async def start(update: Update, context: CallbackContext) -> None:
     check_timer_con()
     person_date = get_data_of_person(update.message)
-    print(person_date, check_is_admin(person_date))
+    logger.info(f'/start {person_date}, {check_is_admin(person_date)}')
     if check_is_admin(person_date):
         if is_admin_menu[person_date[1]]:
             await menu_100_welcome(update, context, con, cur, person_date)
@@ -158,7 +169,7 @@ def spam_every_30_minutes(application: Application, loop: asyncio.AbstractEventL
             records_for_reminder = support_functions.get_records_for_reminder(cur)
             for record in records_for_reminder:
                 if record[3] > 0:
-                    print(f'Отправлено уведомление {record}')
+                    logger.info(f'Отправлено уведомление для {record[4]} "(📅 {record[2]}) ⏰ {record[1]}" records.id={record[0]}')
                     text = f'Вы записаны {name_specialist}\nзавтра (📅 {record[2]}) ⏰ {record[1]}\nПо адресу 🗺️ {address}\nВы придёте?'
                     keyboard = [[InlineKeyboardButton("✅ Да приду", callback_data=f'remeber_yes_{record[0]}')],
                                  [InlineKeyboardButton("❌ Нет, отменить запись", callback_data=f'remeber_no_{record[0]}')]]
@@ -183,7 +194,7 @@ async def start_post_init(application):
     loop = asyncio.get_running_loop()
     independent_thread = threading.Thread(target=spam_every_30_minutes, args=(application, loop, ))
     independent_thread.start()
-    print('bot')
+    logger.info(f'bot started with version=={version}')
 
 
 def main():

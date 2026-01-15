@@ -1,6 +1,9 @@
 import json
-import sqlite3
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def get_template_from_json(string):
@@ -202,7 +205,7 @@ def get_future_records(cur, patient_id):
 
 def get_records_for_reminder(cur):
     now = datetime.datetime.now() + datetime.timedelta(days=1)
-    cur.execute(f'''SELECT DISTINCT records.id, records.time, days.date, accounts.tg_id FROM records, days, accounts
+    cur.execute(f'''SELECT DISTINCT records.id, records.time, days.date, accounts.tg_id, accounts.name FROM records, days, accounts
     WHERE records.patient_id = accounts.id AND days.date = "{now.strftime("%d.%m.%Y")}" AND records.day_id = days.id AND records.is_cancel = 0 AND records.is_reminder = 0''')
     result = cur.fetchall()
     return result

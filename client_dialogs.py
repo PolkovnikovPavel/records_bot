@@ -1,3 +1,5 @@
+import logging
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 
@@ -6,7 +8,11 @@ import telegram_calendar
 import support_functions
 
 import datetime
+import uuid
 
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 last_inlines = {}
 to_del_messages = {}
@@ -14,6 +20,7 @@ calendar_data = {}
 selected_record = {}
 added_records = {}
 records_to_cancel = {}
+jobs_sending2admins = {}
 
 
 def change_tg_menu(tg_id, new_type, con, cur):
@@ -36,8 +43,17 @@ async def spam_to_admins(context: CallbackContext, message):
         await context.bot.send_message(text=message, chat_id=admin_id)
 
 
+# Callback-функция для job_queue
+async def send_added_records_to_admins_callback(context: CallbackContext):
+    job = context.job
+    update, context_ref, con, cur, person_date = job.data
+    del jobs_sending2admins[person_date[1]]
+
+    await send_added_records_to_admins(update, context_ref, con, cur, person_date)
+
+
 async def send_added_records_to_admins(update: Update, context: CallbackContext, con, cur, person_date):
-    if len(added_records[person_date[1]]) == 0 or person_date[7]:
+    if len(added_records[person_date[1]]) == 0:
         return
     ids = []
     for id in added_records[person_date[1]]:
@@ -440,7 +456,7 @@ async def menu_23_get(update: Update, context: CallbackContext, con, cur, person
     query = update.callback_query
     await query.answer()
     if person_date[1] not in selected_record:
-        print('Ошибка: в момент перед фиксацией пользователя была потеряна информация о records.id')
+        logger.error('Ошибка: в момент перед фиксацией пользователя была потеряна информация о records.id')
         await menu_3_main_menu(query, context, con, cur, person_date)
         change_tg_menu(person_date[1], 3, con, cur)
         return
@@ -452,6 +468,19 @@ async def menu_23_get(update: Update, context: CallbackContext, con, cur, person
                 WHERE id = {selected_record[person_date[1]]}"""
         cur.execute(inquiry)
         con.commit()
+
+        # Отложенное уведомление админа
+        if person_date[1] in jobs_sending2admins:
+            jobs_sending2admins[person_date[1]].schedule_removal()
+            del jobs_sending2admins[person_date[1]]
+        job = context.application.job_queue.run_once(
+            callback=send_added_records_to_admins_callback,
+            when=300,  # через 5 минут
+            data=(update, context, con, cur, person_date),
+            name=str(uuid.uuid4())
+        )
+        jobs_sending2admins[person_date[1]] = job
+
         await menu_24_take(update, context, con, cur, person_date)
         change_tg_menu(person_date[1], 24, con, cur)
     else:
@@ -494,7 +523,13 @@ async def menu_24_get(update: Update, context: CallbackContext, con, cur, person
                                             chat_id=person_date[1],
                                             message_id=query.message.message_id)
 
-        await send_added_records_to_admins(update, context, con, cur, person_date)
+        # Удаляем существующее задание для уведомления, если его не было и
+        if person_date[1] in jobs_sending2admins:
+            job = jobs_sending2admins[person_date[1]]
+            job.schedule_removal()
+            del jobs_sending2admins[person_date[1]]
+
+            await send_added_records_to_admins(update, context, con, cur, person_date)
 
         await menu_3_main_menu(query, context, con, cur, person_date)
         change_tg_menu(person_date[1], 3, con, cur)

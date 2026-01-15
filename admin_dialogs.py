@@ -6,12 +6,15 @@ from tabulate import tabulate
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 
-import time
+import logging
 import sqlite3
 import datetime
 import telegram_calendar
 import support_functions
 
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 admin_calendar_data = {}
 last_admin_inlines = {}
@@ -242,6 +245,7 @@ async def menu_104_get(update: Update, context: CallbackContext, con, cur, perso
             con.commit()
         is_wrong = False
     except Exception:
+        logger.warning(f'Введено время "{update.message.text}", которое не удалось обработать')
         is_wrong = True
 
     if is_wrong:
@@ -803,7 +807,7 @@ async def menu_132_take(update: Update, context: CallbackContext, con, cur, pers
     name = query.data
     cur.execute(f'''SELECT DISTINCT * FROM admin_data
         WHERE name = "{name}"''')
-    print(f'''SELECT DISTINCT * FROM admin_data
+    logger.debug(f'''SELECT DISTINCT * FROM admin_data
         WHERE name = "{name}"''')
     result = cur.fetchall()[0]
 
@@ -837,9 +841,10 @@ async def menu_132_get(update: Update, context: CallbackContext, con, cur, perso
         cur.execute(inquiry)
         con.commit()
     except Exception as e:
-        print(f'Ошибка при изменении системных данных, запрос "{inquiry}".\n\nОшибка "{e}"')
+        logger.error(f'Ошибка при изменении системной информации, старое значение {selected_admin_data[person_date[1]]}, новое {update.message.text}, запрос "{inquiry}".\n\nОшибка "{e}"')
         await update.message.reply_text(f'Произошла ошибка запроса изменения данных: {e}')
 
+    logger.info(f'Изменение системной информации, старое значение {selected_admin_data[person_date[1]]}, новое {update.message.text}')
     await support_functions.delete_message(update, context, update.message.message_id)
     await menu_131_take(update, context, con, cur, person_date, last_admin_inlines[person_date[1]])
     change_tg_menu(person_date[1], 131, con, cur)
@@ -952,7 +957,7 @@ async def menu_143_get(update: Update, context: CallbackContext, con, cur, perso
         VALUES ({user_id}, {-1 * user_id}, '{new_name_for_user[person_date[1]][0]}', '{new_name_for_user[person_date[1]][1]}', 1, 0, 'None')"""
         cur.execute(inquiry)
         con.commit()
-        print(f'добавлен новый пользователь, id = {user_id}, name = {new_name_for_user[person_date[1]][0]}')
+        logger.info(f'добавлен новый пользователь, id = {user_id}, name = {new_name_for_user[person_date[1]][0]}')
         text = f'''Добавлен новый пациент:
 👤 {new_name_for_user[person_date[1]][0]}
 📞 +{new_name_for_user[person_date[1]][1]}
@@ -1318,7 +1323,7 @@ async def menu_161_take(update: Update, context: CallbackContext, con, cur, pers
         if len(ids) == 0:
             continue
         inquiry = ' OR '.join(list(map(lambda x: f'id = {x}', ids)))
-        print(f'SELECT name, phone_number, id FROM accounts WHERE {inquiry}')
+        logger.debug(f'SELECT name, phone_number, id FROM accounts WHERE {inquiry}')
         cur.execute(f'SELECT name, phone_number, id FROM accounts WHERE {inquiry}')
         result = cur.fetchall()
         result.sort(key=lambda x: x[0])
@@ -1678,8 +1683,9 @@ async def menu_192_get(update: Update, context: CallbackContext, con, cur, perso
 
     except sqlite3.Error as e:
         formatted_table = f" Ошибка выполнения SQL-запроса: {e}"
+        logger.error(f"Ошибка выполнения кастомного SQL-запроса: {e}\nSQL: {answer}")
 
-    print(f'SQL: {answer}\n=============\nResult: {result}')
+    logger.info(f'SQL: {answer}\n=============\nResult: {result}')
     if person_date[1] in last_admin_inlines:
         await support_functions.delete_message(update, context, last_admin_inlines[person_date[1]])
     try:
