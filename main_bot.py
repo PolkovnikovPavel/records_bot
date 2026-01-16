@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-version = '1.2.1'
+version = os.getenv('TAG', 'local-SNAPSHOT')
 con = sqlite3.connect('data/db.db')
 cur = con.cursor()
 timer_con = time.time()

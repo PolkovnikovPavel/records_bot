@@ -3,13 +3,15 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 
-import auth
+import os
 import telegram_calendar
 import support_functions
-
 import datetime
 import uuid
 
+
+admins_id = os.getenv("ADMINS_ID", "")
+admins = list(map(int, admins_id.split(";")))
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -39,7 +41,7 @@ def add_person_to_list(tg_id):
 
 
 async def spam_to_admins(context: CallbackContext, message):
-    for admin_id in auth.admins:
+    for admin_id in admins:
         await context.bot.send_message(text=message, chat_id=admin_id)
 
 

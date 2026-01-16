@@ -1,6 +1,6 @@
 services:
   record_bot:
-    image: setorg/record_bot:latest
+    image: setorg/record_bot:${TAG:-latest}
     container_name: record_bot
     build: .
     restart: always

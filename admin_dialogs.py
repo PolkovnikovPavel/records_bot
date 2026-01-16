@@ -1,17 +1,19 @@
 import telegram.error
 
-from auth import token, admins
-
 from tabulate import tabulate
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 
+import os
 import logging
 import sqlite3
 import datetime
 import telegram_calendar
 import support_functions
 
+
+admins_id = os.getenv("ADMINS_ID", "")
+admins = list(map(int, admins_id.split(";")))
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
